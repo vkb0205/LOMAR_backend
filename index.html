@@ -1,0 +1,350 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>LOMAR Banana Pro Test UI</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f7efe7;
+      --card: #fffaf5;
+      --ink: #2b2118;
+      --muted: #7a6758;
+      --brand: #9b5f36;
+      --brand-dark: #6f3f20;
+      --danger: #b42318;
+      --ok: #157347;
+      --border: #ead8c7;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: radial-gradient(circle at top left, #fff7ed 0, var(--bg) 38%, #efe0d1 100%);
+      color: var(--ink);
+    }
+
+    main {
+      width: min(1080px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 44px 0;
+    }
+
+    header { margin-bottom: 24px; }
+
+    .eyebrow {
+      color: var(--brand);
+      font-weight: 800;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      font-size: 12px;
+    }
+
+    h1 {
+      margin: 8px 0 10px;
+      font-size: clamp(32px, 5vw, 54px);
+      line-height: 1;
+    }
+
+    p { color: var(--muted); }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 420px 1fr;
+      gap: 22px;
+      align-items: start;
+    }
+
+    .card {
+      background: rgba(255, 250, 245, .86);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      box-shadow: 0 20px 50px rgba(79, 45, 21, .12);
+      padding: 22px;
+      backdrop-filter: blur(10px);
+    }
+
+    label {
+      display: block;
+      margin: 16px 0 8px;
+      font-weight: 750;
+    }
+
+    input, select, textarea, button {
+      width: 100%;
+      min-height: 46px;
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      font: inherit;
+    }
+
+    input, select, textarea {
+      padding: 0 14px;
+      background: #fff;
+      color: var(--ink);
+      outline: none;
+    }
+
+    input:focus, select:focus, textarea:focus {
+      border-color: var(--brand);
+      box-shadow: 0 0 0 4px rgba(155, 95, 54, .14);
+    }
+
+    textarea {
+      min-height: 96px;
+      padding: 12px 14px;
+      resize: vertical;
+    }
+
+    button {
+      margin-top: 20px;
+      border: 0;
+      color: white;
+      background: linear-gradient(135deg, var(--brand), var(--brand-dark));
+      font-weight: 850;
+      cursor: pointer;
+      transition: transform .15s ease, opacity .15s ease;
+    }
+
+    button:hover { transform: translateY(-1px); }
+    button:disabled { cursor: not-allowed; opacity: .65; transform: none; }
+
+    .status {
+      display: none;
+      margin-top: 16px;
+      padding: 12px 14px;
+      border-radius: 14px;
+      font-weight: 700;
+    }
+
+    .status.show { display: block; }
+    .status.loading { color: var(--brand-dark); background: #fff2df; }
+    .status.error { color: var(--danger); background: #fff0ee; }
+    .status.success { color: var(--ok); background: #eaf7ef; }
+
+    .spinner {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      margin-right: 8px;
+      border: 2px solid rgba(111, 63, 32, .25);
+      border-top-color: var(--brand-dark);
+      border-radius: 999px;
+      animation: spin .8s linear infinite;
+      vertical-align: -2px;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .result {
+      min-height: 520px;
+      display: grid;
+      place-items: center;
+      text-align: center;
+    }
+
+    .result img {
+      display: none;
+      width: 100%;
+      max-height: 620px;
+      object-fit: contain;
+      border-radius: 18px;
+      border: 1px solid var(--border);
+      background: #fff;
+    }
+
+    .placeholder {
+      border: 2px dashed var(--border);
+      border-radius: 20px;
+      padding: 42px 24px;
+      width: 100%;
+      color: var(--muted);
+    }
+
+    .meta {
+      display: none;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 16px;
+      width: 100%;
+    }
+
+    .meta.show { display: grid; }
+
+    .metric {
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 12px;
+      background: #fff;
+      text-align: left;
+    }
+
+    .metric span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+    }
+
+    .metric strong {
+      display: block;
+      margin-top: 4px;
+      overflow-wrap: anywhere;
+    }
+
+    @media (max-width: 900px) {
+      .grid { grid-template-columns: 1fr; }
+      .result { min-height: 360px; }
+      .meta { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div class="eyebrow">LOMAR internal test</div>
+      <h1>Vertex AI Nano Banana VTON Tester</h1>
+      <p>Upload a mannequin/base image and selected clothing, then optionally add a user query to refine the try-on result.</p>
+    </header>
+
+    <section class="grid">
+      <form class="card" onsubmit="testTryOn(event)">
+        <label for="apiUrl">Backend API URL</label>
+        <input id="apiUrl" type="url" value="http://localhost:3000" required />
+
+        <label for="bodyUrl">Mannequin/base image URL</label>
+        <input id="bodyUrl" type="url" placeholder="https://.../mannequin.png" />
+        <label for="bodyFile">Or upload mannequin/base image</label>
+        <input id="bodyFile" type="file" accept="image/*" />
+
+        <label for="garmentUrl">Dress/clothing image URL</label>
+        <input id="garmentUrl" type="url" placeholder="https://.../dress.png" />
+        <label for="garmentFile">Or upload dress/clothing image</label>
+        <input id="garmentFile" type="file" accept="image/*" />
+
+        <label for="category">Category</label>
+        <select id="category">
+          <option value="tops">tops</option>
+          <option value="bottoms">bottoms</option>
+          <option value="onepieces">onepieces</option>
+          <option value="dress">dress</option>
+          <option value="clothes">clothes</option>
+        </select>
+
+        <label for="prompt">Optional user query / edit prompt</label>
+        <textarea id="prompt" placeholder="Example: make the dress more elegant, adjust sleeves, keep the same fabric pattern..."></textarea>
+
+        <button id="testButton" type="submit">Generate mannequin try-on</button>
+        <div id="status" class="status" role="status" aria-live="polite"></div>
+      </form>
+
+      <section class="card result">
+        <div id="placeholder" class="placeholder">
+          <strong>Result image will appear here</strong>
+          <p>Expected latency depends on Vertex AI Nano Banana image generation load and input size.</p>
+        </div>
+        <img id="resultImage" alt="Generated virtual try-on result" />
+        <div id="meta" class="meta">
+          <div class="metric"><span>Latency</span><strong id="latency">—</strong></div>
+          <div class="metric"><span>Model</span><strong id="model">—</strong></div>
+          <div class="metric"><span>Category</span><strong id="resultCategory">—</strong></div>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <script>
+    const statusEl = document.getElementById('status');
+    const resultImage = document.getElementById('resultImage');
+    const placeholder = document.getElementById('placeholder');
+    const meta = document.getElementById('meta');
+    const button = document.getElementById('testButton');
+
+    function setStatus(type, message) {
+      statusEl.className = `status show ${type}`;
+      statusEl.innerHTML = type === 'loading' ? `<span class="spinner"></span>${message}` : message;
+    }
+
+    function getErrorMessage(payload) {
+      if (!payload) return 'Unknown error';
+      if (typeof payload.detail === 'string') return payload.detail;
+      if (payload.detail) return JSON.stringify(payload.detail, null, 2);
+      if (payload.message) return payload.message;
+      return JSON.stringify(payload, null, 2);
+    }
+
+    async function testTryOn(event) {
+      event.preventDefault();
+
+      const apiUrl = document.getElementById('apiUrl').value.replace(/\/$/, '');
+      const bodyUrl = document.getElementById('bodyUrl').value.trim();
+      const garmentUrl = document.getElementById('garmentUrl').value.trim();
+      const bodyFile = document.getElementById('bodyFile').files[0];
+      const garmentFile = document.getElementById('garmentFile').files[0];
+      const category = document.getElementById('category').value;
+      const prompt = document.getElementById('prompt').value.trim();
+      const usingUploads = Boolean(bodyFile || garmentFile);
+
+      if (usingUploads && (!bodyFile || !garmentFile)) {
+        setStatus('error', 'Upload mode requires both mannequin/base image and dress/clothing image files.');
+        return;
+      }
+
+      if (!usingUploads && (!bodyUrl || !garmentUrl)) {
+        setStatus('error', 'Enter both mannequin + clothing URLs or upload both local files.');
+        return;
+      }
+
+      button.disabled = true;
+      resultImage.style.display = 'none';
+      placeholder.style.display = 'block';
+      meta.classList.remove('show');
+      setStatus('loading', 'Running Vertex AI Nano Banana virtual try-on...');
+
+      try {
+        let response;
+        if (usingUploads) {
+          const formData = new FormData();
+          formData.append('body_image', bodyFile);
+          formData.append('garment_image', garmentFile);
+          formData.append('category', category);
+          formData.append('prompt', prompt);
+          response = await fetch(`${apiUrl}/test-try-on-upload`, {
+            method: 'POST',
+            body: formData,
+          });
+        } else {
+          response = await fetch(`${apiUrl}/test-try-on`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ body_url: bodyUrl, garment_url: garmentUrl, category, prompt }),
+          });
+        }
+
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(getErrorMessage(payload));
+        if (!payload.image_url) throw new Error('API response did not include image_url.');
+
+        resultImage.src = payload.image_url;
+        resultImage.style.display = 'block';
+        placeholder.style.display = 'none';
+        document.getElementById('latency').textContent = `${payload.latency_seconds ?? (payload.latency_ms / 1000).toFixed(2)}s`;
+        document.getElementById('model').textContent = payload.model || 'Unknown';
+        document.getElementById('resultCategory').textContent = payload.category || category;
+        meta.classList.add('show');
+        setStatus('success', 'Image generation completed successfully.');
+      } catch (error) {
+        setStatus('error', error.message || String(error));
+      } finally {
+        button.disabled = false;
+      }
+    }
+  </script>
+</body>
+</html>

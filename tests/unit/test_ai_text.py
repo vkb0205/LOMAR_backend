@@ -61,9 +61,14 @@ class TestOpenAIClientConstruction:
         mock_client.chat.completions.create.assert_called_once()
         _, kwargs = mock_client.chat.completions.create.call_args
         assert kwargs["model"] == "gpt-4o-mini"
-        assert kwargs["messages"] == [
-            {"role": "user", "content": "Tìm giúp tôi váy cưới"}
-        ]
+        # The consultant persona is now always injected as a system turn ahead
+        # of the user message.
+        assert kwargs["messages"][0]["role"] == "system"
+        assert "Song Hỷ" in kwargs["messages"][0]["content"]
+        assert kwargs["messages"][-1] == {
+            "role": "user",
+            "content": "Tìm giúp tôi váy cưới",
+        }
         assert reply == "Xin chào!"
 
     def test_omits_base_url_when_unset(self, monkeypatch: pytest.MonkeyPatch):

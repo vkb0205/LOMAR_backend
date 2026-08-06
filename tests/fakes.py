@@ -98,6 +98,40 @@ class _Query:
         self._filters.append(lambda row: row.get(column) in allowed)
         return self
 
+    def lte(self, column: str, value: Any) -> "_Query":
+        self._filters.append(
+            lambda row: row.get(column) is not None and row.get(column) <= value
+        )
+        return self
+
+    def gte(self, column: str, value: Any) -> "_Query":
+        self._filters.append(
+            lambda row: row.get(column) is not None and row.get(column) >= value
+        )
+        return self
+
+    def lt(self, column: str, value: Any) -> "_Query":
+        self._filters.append(
+            lambda row: row.get(column) is not None and row.get(column) < value
+        )
+        return self
+
+    def gt(self, column: str, value: Any) -> "_Query":
+        self._filters.append(
+            lambda row: row.get(column) is not None and row.get(column) > value
+        )
+        return self
+
+    def ilike(self, column: str, pattern: str) -> "_Query":
+        needle = pattern.strip("%").lower()
+
+        def _check(row: dict[str, Any]) -> bool:
+            value = row.get(column)
+            return isinstance(value, str) and needle in value.lower()
+
+        self._filters.append(_check)
+        return self
+
     def or_(self, expression: str) -> "_Query":
         self._or_filter = expression
         return self

@@ -20,7 +20,7 @@ services:
       # Comma-separated CORS allowlist. Replace with the GitHub Pages origin
       # (scheme + host only, no repository path). "*" is rejected by the app.
       - key: ALLOWED_ORIGINS
-        value: https://YOUR-GITHUB-USERNAME.github.io
+        value: https://vkb0205.github.io
 
       # /api/v1/me/* and /api/v1/admin/* always require auth; this flag only
       # gates the legacy AI endpoints (/consult, /test-try-on, /proxy-image).

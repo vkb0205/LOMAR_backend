@@ -77,6 +77,20 @@ def _isolate_env(monkeypatch: pytest.MonkeyPatch) -> Generator[None, None, None]
     get_settings.cache_clear()
 
 
+@pytest.fixture(autouse=True)
+def _isolate_session_store() -> Generator[None, None, None]:
+    """Reset the process-wide consultant session memory between tests.
+
+    The store is a module-level singleton (like ``get_settings``), so without
+    this a session minted by one test would remain visible to the next.
+    """
+    from app.services.session_store import get_session_store
+
+    get_session_store().clear_all()
+    yield
+    get_session_store().clear_all()
+
+
 # ---------------------------------------------------------------------------
 # Test app
 # ---------------------------------------------------------------------------

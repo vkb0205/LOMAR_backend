@@ -49,6 +49,17 @@ class Settings(BaseSettings):
     google_text_model: str = "gemini-2.5-flash"
     nano_banana_model: str = ""
 
+    # --- OpenAI-compatible provider (chat/consult text replies) ---
+    # Any provider exposing an OpenAI-compatible /chat/completions API.
+    ai_text_provider: str = "openai"
+    openai_api_key: str = ""
+    # Optional. Leave empty to use the default OpenAI endpoint; set to e.g.
+    # https://api.deepseek.com/v1 or a local Ollama gateway to point elsewhere.
+    openai_base_url: str = ""
+    # Model name verbatim as the provider expects it (e.g. gpt-4o-mini,
+    # deepseek-chat, llama3.1).
+    ai_text_model: str = ""
+
     # --- Outbound image proxy limits (Constitution IV: SSRF/size caps) ---
     proxy_image_timeout_seconds: float = 10.0
     proxy_image_max_bytes: int = 10 * 1024 * 1024

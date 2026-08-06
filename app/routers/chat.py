@@ -41,37 +41,14 @@ def _message(row: dict[str, Any]) -> ChatMessage:
 
 
 async def _generate_reply(content: str) -> str:
-    """Generate an AI reply using the same provider call as `/consult`.
+    """Generate an AI reply using the shared text-generation abstraction.
 
-    FR-012: AI reply generation is unchanged; this mirrors
-    `app.routers.vton.consult`'s model invocation exactly so chat history
-    persistence is the only new behavior.
+    Mirrors the contract of the legacy `/consult` endpoint while delegating
+    provider selection to `app.services.ai_text`.
     """
-    from app.config import get_settings
-    from app.errors import UpstreamUnavailableError
-    from google import genai
-    from google.genai import types
+    from app.services.ai_text import generate_chat_reply
 
-    settings = get_settings()
-    try:
-        client = genai.Client(
-            vertexai=settings.vertex_configured,
-            project=settings.google_cloud_project,
-            location=settings.google_cloud_location,
-            api_key=settings.google_api_key or None,
-        )
-        generated = client.models.generate_content(
-            model=settings.google_text_model,
-            contents=[types.Content(role="user", parts=[types.Part.from_text(text=content)])],
-            config=types.GenerateContentConfig(temperature=0.7, max_output_tokens=512),
-        )
-    except Exception as exc:
-        logger.exception("chat_ai_reply_failed")
-        raise UpstreamUnavailableError("The AI consultant is temporarily unavailable.") from exc
-
-    if not generated.candidates:
-        return ""
-    return "".join(part.text or "" for part in generated.candidates[0].content.parts).strip()
+    return generate_chat_reply(content)
 
 
 @router.post("/threads", status_code=status.HTTP_201_CREATED, response_model=ChatThreadCreated)

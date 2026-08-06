@@ -29,11 +29,15 @@ uvicorn app.main:app --host "${API_HOST:-0.0.0.0}" --port "${API_PORT:-8080}"
 | `SUPABASE_JWT_SECRET` | authenticated routes | empty | HS256 Supabase JWT secret; Secret Manager only |
 | `SUPABASE_JWT_AUDIENCE` | no | `authenticated` | JWT audience |
 | `SUPABASE_TIMEOUT_SECONDS` | no | `8` | Per-operation DB timeout |
-| `GOOGLE_GENAI_USE_VERTEXAI` | AI | `false` | Select Vertex mode |
-| `GOOGLE_API_KEY` | API-key AI | empty | GenAI API key |
-| `GOOGLE_CLOUD_PROJECT` | Vertex AI | empty | GCP project |
-| `GOOGLE_CLOUD_LOCATION` | Vertex AI | `global` | Vertex location |
-| `GOOGLE_TEXT_MODEL` | no | `gemini-2.5-flash` | Consultant model |
+| `AI_TEXT_PROVIDER` | no | `openai` | Text provider: `openai` (any OpenAI-compatible API) or `google` |
+| `OPENAI_API_KEY` | OpenAI provider | empty | Key for the OpenAI-compatible API (e.g. OpenAI, DeepSeek, OpenRouter, local gateway) |
+| `OPENAI_BASE_URL` | no | empty | Optional `base_url` override for OpenAI-compatible endpoints (e.g. `https://api.deepseek.com/v1`); empty = default OpenAI endpoint |
+| `AI_TEXT_MODEL` | no | empty | Model name passed verbatim (e.g. `gpt-4o-mini`, `deepseek-chat`); falls back to `GOOGLE_TEXT_MODEL` |
+| `GOOGLE_GENAI_USE_VERTEXAI` | google provider | `false` | Select Vertex mode |
+| `GOOGLE_API_KEY` | google provider | empty | GenAI API key |
+| `GOOGLE_CLOUD_PROJECT` | google provider | empty | GCP project |
+| `GOOGLE_CLOUD_LOCATION` | google provider | `global` | Vertex location |
+| `GOOGLE_TEXT_MODEL` | no | `gemini-2.5-flash` | Consultant model fallback for the text provider |
 | `NANO_BANANA_MODEL` | image AI | empty | Image model |
 
 ## Endpoint reference

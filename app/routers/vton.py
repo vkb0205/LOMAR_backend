@@ -452,46 +452,20 @@ async def consult(
     (Constitution Principle I) so the frontend hook and service layer can be
     swapped to this endpoint without change.
     """
-    settings = get_settings()
-    text_model = settings.google_text_model
-
     # When auth is enabled the endpoint should ideally carry the caller's
-    # identity so the backend can log/save the conversation.  For now we just
+    # identity so the backend can log/save the conversation. For now we just
     # reply from the model directly; history persistence is out of scope for
     # the legacy contract.
     try:
-        from google import genai  # type: ignore[import-untyped]
-        from google.genai import types  # type: ignore[import-untyped]
+        from app.services.ai_text import generate_chat_reply
 
-        client = genai.Client(
-            vertexai=settings.vertex_configured,
-            project=settings.google_cloud_project,
-            location=settings.google_cloud_location,
-            api_key=settings.google_api_key or None,
-        )
-        response = client.models.generate_content(
-            model=text_model,
-            contents=[
-                types.Content(
-                    role="user",
-                    parts=[types.Part.from_text(text=body.message)],
-                )
-            ],
-            config=types.GenerateContentConfig(
-                temperature=0.7,
-                max_output_tokens=512,
-            ),
-        )
+        reply_text = generate_chat_reply(body.message)
+    except UpstreamUnavailableError:
+        raise
     except Exception as exc:
         logger.exception("Consult model call failed")
         raise UpstreamUnavailableError(
             "The AI consultant is temporarily unavailable."
         ) from exc
-
-    reply_text = ""
-    if response.candidates:
-        reply_text = "".join(
-            p.text or "" for p in response.candidates[0].content.parts
-        ).strip()
 
     return ConsultResponse(reply=reply_text or None)

@@ -13,16 +13,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 
-def _fake_genai_client(reply_text: str = "Hello from the AI consultant"):
-    """Build a MagicMock standing in for `google.genai.Client()`."""
-    part = SimpleNamespace(text=reply_text)
-    content = SimpleNamespace(parts=[part])
-    candidate = SimpleNamespace(content=content)
-    response = SimpleNamespace(candidates=[candidate])
-
-    client = MagicMock()
-    client.models.generate_content = MagicMock(return_value=response)
-    return client
+def _fake_openai_reply(reply_text: str = "Hello from the AI consultant"):
+    return reply_text
 
 
 class TestConsultContract:
@@ -36,8 +28,7 @@ class TestConsultContract:
         assert response.status_code == 422
 
     def test_success_shape(self, client):
-        fake_client = _fake_genai_client("Try a linen palette for your venue.")
-        with patch("google.genai.Client", return_value=fake_client):
+        with patch("app.services.ai_text.generate_chat_reply", return_value=_fake_openai_reply("Try a linen palette for your venue.")):
             response = client.post("/consult", json={"message": "What should I wear?"})
         assert response.status_code == 200
         body = response.json()
@@ -46,8 +37,7 @@ class TestConsultContract:
 
     def test_open_mode_allows_anonymous(self, client, settings_override):
         with settings_override({"ENABLE_AUTH": "false"}):
-            fake_client = _fake_genai_client()
-            with patch("google.genai.Client", return_value=fake_client):
+            with patch("app.services.ai_text.generate_chat_reply", return_value=_fake_openai_reply()):
                 response = client.post("/consult", json={"message": "hi"})
         assert response.status_code == 200
 
@@ -59,8 +49,7 @@ class TestConsultContract:
 
     def test_gated_mode_allows_valid_token(self, client, settings_override, user_token):
         with settings_override({"ENABLE_AUTH": "true"}):
-            fake_client = _fake_genai_client()
-            with patch("google.genai.Client", return_value=fake_client):
+            with patch("app.services.ai_text.generate_chat_reply", return_value=_fake_openai_reply()):
                 response = client.post(
                     "/consult",
                     json={"message": "hi"},
@@ -69,7 +58,7 @@ class TestConsultContract:
         assert response.status_code == 200
 
     def test_upstream_failure_is_sanitized(self, client):
-        with patch("google.genai.Client", side_effect=RuntimeError("some internal upstream text")):
+        with patch("app.services.ai_text.generate_chat_reply", side_effect=RuntimeError("some internal upstream text")):
             response = client.post("/consult", json={"message": "hi"})
         assert response.status_code == 503
         assert "some internal upstream text" not in response.text

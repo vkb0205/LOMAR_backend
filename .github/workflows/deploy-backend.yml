@@ -1,0 +1,117 @@
+name: Build and Deploy Backend to Cloud Run
+
+# This workflow lives in the LOMAR_backend repository, whose root IS the
+# backend build context (T015). The two older copies under the LOMAR frontend
+# repo and the LORMAR working root pointed at `./backend` and `./vton_test_ui`
+# respectively — directories that exist in neither repository — so neither
+# could ever build. They are retired in favour of this file.
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'app/**'
+      - 'requirements.txt'
+      - 'Dockerfile'
+      - '.dockerignore'
+      - '.github/workflows/deploy-backend.yml'
+  workflow_dispatch:
+
+env:
+  PROJECT_ID: lomar-500117
+  SERVICE_NAME: lomar-vton-backend
+  REGION: us-central1
+  IMAGE_NAME: lomar-vton-backend
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # The suite uses tests/fakes.py::FakeSupabase and a mocked AI provider,
+      # so it needs no Supabase credentials and makes no live network calls
+      # (Constitution VI).
+      - name: Run tests
+        run: pytest -q
+
+  deploy:
+    name: Build and Deploy to Cloud Run
+    runs-on: ubuntu-latest
+    needs: test
+
+    # Uses a service account with Cloud Run Admin and Artifact Registry Writer.
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Google Auth
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_CREDENTIALS }}
+          project_id: ${{ env.PROJECT_ID }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: |
+          gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev
+
+      - name: Build and Push Docker Image
+        run: |
+          docker build -t ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.IMAGE_NAME }}/${{ env.IMAGE_NAME }}:${{ github.sha }} .
+          docker push ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.IMAGE_NAME }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy ${{ env.SERVICE_NAME }} \
+            --image ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.IMAGE_NAME }}/${{ env.IMAGE_NAME }}:${{ github.sha }} \
+            --platform managed \
+            --region ${{ env.REGION }} \
+            --allow-unauthenticated \
+            --port 8080 \
+            --set-env-vars="GOOGLE_GENAI_USE_VERTEXAI=true,GOOGLE_CLOUD_PROJECT=${{ env.PROJECT_ID }},GOOGLE_CLOUD_LOCATION=global,NANO_BANANA_MODEL=gemini-3.1-flash-image,GOOGLE_TEXT_MODEL=${{ vars.GOOGLE_TEXT_MODEL || 'gemini-2.5-flash' }},API_HOST=0.0.0.0,API_PORT=8080,ALLOWED_ORIGINS=${{ vars.ALLOWED_ORIGINS }},ENABLE_AUTH=${{ vars.ENABLE_AUTH || 'false' }},SUPABASE_URL=${{ vars.SUPABASE_URL }},SUPABASE_TIMEOUT_SECONDS=${{ vars.SUPABASE_TIMEOUT_SECONDS || '8' }}" \
+            --update-secrets="SUPABASE_JWT_SECRET=SUPABASE_JWT_SECRET:latest,SUPABASE_ANON_KEY=SUPABASE_ANON_KEY:latest,SUPABASE_SERVICE_ROLE_KEY=SUPABASE_SERVICE_ROLE_KEY:latest"
+
+      # --- Secret vs public config split (T015, Constitution II) ---
+      # Secrets are mounted from Secret Manager via --update-secrets and are
+      # NEVER passed through --set-env-vars, where they would be readable in the
+      # Cloud Run console. Before the first run, create these Secret Manager
+      # secrets and grant the Cloud Run runtime service account
+      # roles/secretmanager.secretAccessor on each:
+      #   SUPABASE_JWT_SECRET        HS256 secret used to verify caller JWTs
+      #   SUPABASE_ANON_KEY          caller-JWT / anon PostgREST key
+      #   SUPABASE_SERVICE_ROLE_KEY  admin + analytics aggregation only
+      #
+      # Public, non-sensitive config stays in GitHub repo VARIABLES
+      # (Settings -> Secrets and variables -> Actions -> Variables):
+      #   SUPABASE_URL              e.g. https://<ref>.supabase.co
+      #   ALLOWED_ORIGINS           e.g. https://<user>.github.io  (never "*")
+      #   ENABLE_AUTH               true once SUPABASE_JWT_SECRET is wired
+      #   GOOGLE_TEXT_MODEL         optional, defaults to gemini-2.5-flash
+      #   SUPABASE_TIMEOUT_SECONDS  optional, defaults to 8
+
+      - name: Smoke check /health
+        run: |
+          SERVICE_URL=$(gcloud run services describe ${{ env.SERVICE_NAME }} --region ${{ env.REGION }} --format="value(status.url)")
+          echo "service_url=$SERVICE_URL" >> $GITHUB_OUTPUT
+          curl -fsS "$SERVICE_URL/health" > /dev/null
+          echo "Deployed and healthy: $SERVICE_URL"
+        id: service-url

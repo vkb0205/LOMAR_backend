@@ -22,12 +22,17 @@ services:
       # anything more specific silently fails to match. "*" is rejected by the
       # app (Constitution IV).
       #
-      # The frontend is a Render static site; the github.io entry is retained so
-      # the older GitHub Pages deployment keeps working during the switchover
-      # and can be dropped once it is retired. Update the onrender.com host to
-      # match the actual static-site URL Render assigns.
+      # The host must be the exact one Render assigned to the static site
+      # (https://lomar.onrender.com), which is not necessarily derived from the
+      # service name in the frontend blueprint. A mismatch returns
+      # "400 Disallowed CORS origin" on preflight and the browser blocks every
+      # API call, which surfaces in the UI as an empty catalog rather than an
+      # obvious network error.
+      #
+      # The github.io entry is retained so the older GitHub Pages deployment
+      # keeps working during the switchover; drop it once that is retired.
       - key: ALLOWED_ORIGINS
-        value: https://lomar-frontend.onrender.com,https://vkb0205.github.io
+        value: https://lomar.onrender.com,https://vkb0205.github.io
 
       # /api/v1/me/* and /api/v1/admin/* always require auth; this flag only
       # gates the legacy AI endpoints (/consult, /test-try-on, /proxy-image).

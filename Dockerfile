@@ -19,11 +19,13 @@ COPY app ./app
 RUN useradd --create-home --shell /usr/sbin/nologin appuser
 USER appuser
 
-# Cloud Run supplies PORT; API_PORT/API_HOST default to 8080/0.0.0.0 in
-# app/config.py. Bind explicitly here for local `docker run` parity.
+# Cloud Run and Render both supply PORT; API_PORT/API_HOST default to
+# 8080/0.0.0.0 in app/config.py. Bind explicitly here for local `docker run`
+# parity.
 ENV API_HOST=0.0.0.0 \
     API_PORT=8080
 
 EXPOSE 8080
 
-CMD ["sh", "-c", "uvicorn app.main:app --host ${API_HOST} --port ${API_PORT}"]
+# PORT wins when the platform injects it, otherwise fall back to API_PORT.
+CMD ["sh", "-c", "uvicorn app.main:app --host ${API_HOST} --port ${PORT:-$API_PORT}"]

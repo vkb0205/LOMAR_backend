@@ -1,0 +1,50 @@
+# Render Blueprint (https://render.com/docs/blueprint-spec).
+#
+# Deploys the FastAPI backend as a Docker web service. Every secret is declared
+# with `sync: false`, meaning Render prompts for the value in the dashboard and
+# never reads it from this file — no credential is committed here
+# (Constitution III/IV).
+services:
+  - type: web
+    name: lomar-backend
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    region: singapore
+    healthCheckPath: /health
+    envVars:
+      # Render injects PORT; the Dockerfile CMD prefers it over API_PORT.
+      - key: API_HOST
+        value: 0.0.0.0
+
+      # Comma-separated CORS allowlist. Replace with the GitHub Pages origin
+      # (scheme + host only, no repository path). "*" is rejected by the app.
+      - key: ALLOWED_ORIGINS
+        value: https://YOUR-GITHUB-USERNAME.github.io
+
+      # /api/v1/me/* and /api/v1/admin/* always require auth; this flag only
+      # gates the legacy AI endpoints (/consult, /test-try-on, /proxy-image).
+      - key: ENABLE_AUTH
+        value: "true"
+
+      # --- Supabase (dashboard-entered) ---
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_JWT_SECRET
+        sync: false
+      # Only set this if the /api/v1/admin/analytics route is actually used.
+      # It bypasses row-level security for the whole project.
+      # - key: SUPABASE_SERVICE_ROLE_KEY
+      #   sync: false
+
+      # --- Text provider (dashboard-entered) ---
+      - key: AI_TEXT_PROVIDER
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_BASE_URL
+        sync: false
+      - key: AI_TEXT_MODEL
+        sync: false

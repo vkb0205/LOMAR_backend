@@ -17,10 +17,17 @@ services:
       - key: API_HOST
         value: 0.0.0.0
 
-      # Comma-separated CORS allowlist. Replace with the GitHub Pages origin
-      # (scheme + host only, no repository path). "*" is rejected by the app.
+      # Comma-separated CORS allowlist, each entry scheme + host only (no path,
+      # no trailing slash) — a browser Origin header never includes a path, so
+      # anything more specific silently fails to match. "*" is rejected by the
+      # app (Constitution IV).
+      #
+      # The frontend is a Render static site; the github.io entry is retained so
+      # the older GitHub Pages deployment keeps working during the switchover
+      # and can be dropped once it is retired. Update the onrender.com host to
+      # match the actual static-site URL Render assigns.
       - key: ALLOWED_ORIGINS
-        value: https://vkb0205.github.io
+        value: https://lomar-frontend.onrender.com,https://vkb0205.github.io
 
       # /api/v1/me/* and /api/v1/admin/* always require auth; this flag only
       # gates the legacy AI endpoints (/consult, /test-try-on, /proxy-image).

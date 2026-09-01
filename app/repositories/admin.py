@@ -26,9 +26,7 @@ _COUNT_TABLES = (
     "services",
     "posts",
     "post_comments",
-    "reviews",
     "service_requests",
-    "ai_design_generations",
 )
 
 
@@ -97,11 +95,8 @@ async def fetch_platform_metrics(client: AsyncClient) -> dict[str, int]:
     posts = await count_rows(client, "posts")
     posts_hidden = await count_rows(client, "posts", ("status", "hidden"))
     comments_flagged = await count_rows(client, "post_comments", ("status", "flagged"))
-    reviews_flagged = await count_rows(client, "reviews", ("status", "flagged"))
     leads = await count_rows(client, "service_requests")
     leads_new = await count_rows(client, "service_requests", ("status", "new"))
-    generations = await count_rows(client, "ai_design_generations")
-    generations_failed = await count_rows(client, "ai_design_generations", ("status", "failed"))
     return {
         "users": users,
         "vendors": vendors,
@@ -110,11 +105,8 @@ async def fetch_platform_metrics(client: AsyncClient) -> dict[str, int]:
         "posts": posts,
         "postsHidden": posts_hidden,
         "commentsFlagged": comments_flagged,
-        "reviewsFlagged": reviews_flagged,
         "leads": leads,
         "leadsNew": leads_new,
-        "generations": generations,
-        "generationsFailed": generations_failed,
     }
 
 

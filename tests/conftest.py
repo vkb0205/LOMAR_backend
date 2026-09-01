@@ -13,9 +13,16 @@ with configurable ``sub`` and ``role`` claims.
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
+# Sibling agents package at ../agents relative to LOMAR_backend
+_AGENTS_ROOT = Path(__file__).resolve().parents[1].parent / "agents"
+if _AGENTS_ROOT.is_dir() and str(_AGENTS_ROOT) not in sys.path:
+    sys.path.insert(0, str(_AGENTS_ROOT))
+
 import asyncio
 import os
-import sys
 import time
 import uuid
 from typing import AsyncGenerator, Generator
@@ -84,7 +91,7 @@ def _isolate_session_store() -> Generator[None, None, None]:
     The store is a module-level singleton (like ``get_settings``), so without
     this a session minted by one test would remain visible to the next.
     """
-    from app.services.session_store import get_session_store
+    from chatbot.session_store import get_session_store
 
     get_session_store().clear_all()
     yield

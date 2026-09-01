@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from app.config import get_settings
-from app.services.session_store import SessionStore
+from chatbot.session_store import SessionStore
 
 
 def test_unknown_client_id_cannot_create_or_read_arbitrary_session():

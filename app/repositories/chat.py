@@ -33,7 +33,6 @@ async def create_thread(client: AsyncClient, user_id: str, payload: dict[str, An
         "context_type": payload.get("contextType") or "consultant",
         "vendor_id": payload.get("vendorId"),
         "service_id": payload.get("serviceId"),
-        "design_project_id": payload.get("designProjectId"),
         "created_at": _now(),
         "updated_at": _now(),
     }

@@ -22,7 +22,7 @@ uvicorn app.main:app --host "${API_HOST:-0.0.0.0}" --port "${API_PORT:-8080}"
 | `API_HOST` | no | `0.0.0.0` | Bind address |
 | `API_PORT` | no | `8080` | HTTP port |
 | `ALLOWED_ORIGINS` | no | `http://localhost:3000` | Comma-separated CORS allowlist; `*` forbidden |
-| `ENABLE_AUTH` | no | `false` | Gates legacy AI routes only; `/api/v1/me/*` and `/api/v1/admin/*` always require auth |
+| `ENABLE_AUTH` | no | `false` | Development switch; private `/api/v1/*` routes always require auth |
 | `SUPABASE_URL` | data routes | empty | Existing Supabase project URL |
 | `SUPABASE_ANON_KEY` | data routes | empty | Caller-JWT/anon PostgREST key |
 | `SUPABASE_SERVICE_ROLE_KEY` | admin analytics | empty | Secret Manager only; never commit or pass as public env config |
@@ -38,22 +38,23 @@ uvicorn app.main:app --host "${API_HOST:-0.0.0.0}" --port "${API_PORT:-8080}"
 | `GOOGLE_CLOUD_PROJECT` | google provider | empty | GCP project |
 | `GOOGLE_CLOUD_LOCATION` | google provider | `global` | Vertex location |
 | `GOOGLE_TEXT_MODEL` | no | `gemini-2.5-flash` | Consultant model fallback for the text provider |
-| `NANO_BANANA_MODEL` | image AI | empty | Image model |
 
 ## Endpoint reference
 
 Every response carries `X-Correlation-Id`. Supabase/provider failures use the
 sanitized envelope `{ "error": { "code": "...", "message": "..." } }`.
 
-### Liveness and legacy AI
+### Liveness and Business Intelligence
 
 | Method | Path | Auth | Body / response |
 |---|---|---|---|
 | GET | `/health` | none | Existing health shape |
-| GET | `/proxy-image?url=<encoded>` | `ENABLE_AUTH` | Validated image proxy |
-| POST | `/test-try-on` | `ENABLE_AUTH` | JSON image URL request; image URL response |
-| POST | `/test-try-on-upload` | `ENABLE_AUTH` | Multipart `body_image`, `garment_image`, `category`, `prompt` |
-| POST | `/consult` | `ENABLE_AUTH` | `{ "message": "..." }` → `{ "reply": "..." }` |
+| GET | `/health` | none | Liveness and provider configuration |
+| GET | `/api/v1/business-intelligence/overview` | JWT | Metrics, trends, agents, reports, and recommendations |
+| POST | `/api/v1/business-intelligence/agents/run` | JWT | Run an analysis agent |
+| POST | `/api/v1/business-intelligence/reports` | JWT | Generate a deterministic prototype report |
+| POST | `/api/v1/business-intelligence/actions/preview` | JWT | Preview a simulated recommendation action |
+| POST | `/api/v1/business-intelligence/chat` | JWT | Grounded BI copilot response |
 
 ### Catalog (public)
 
@@ -61,10 +62,15 @@ sanitized envelope `{ "error": { "code": "...", "message": "..." } }`.
 |---|---|---|
 | GET | `/api/v1/catalog/vendors` | `{ "vendors": [...] }` |
 | GET | `/api/v1/catalog/vendors/{vendorId}` | `{ "vendor": {...}, "services": [...] }` |
-| GET | `/api/v1/catalog/customize` | `{ "services": [...], "serviceImages": [...], "vendors": [...] }` |
 | GET | `/api/v1/catalog/services/{serviceId}/suggestion` | `{ "service": {...} }` |
+| GET | `/api/v1/catalog/wedding-plans` | `{ "plans": [...] }` (curated packages, active only) |
+| GET | `/api/v1/catalog/wedding-plans/{planId}` | `{ "plan": {...}, "items": [...] }` |
 
-Only catalog-visible `active` vendor/service rows are public.
+Only catalog-visible `active` vendor/service/plan rows are public. `wedding_plans`
+bundle multiple catalog services (possibly multi-vendor) into one priced offer;
+`wedding_plan_items` link a plan to its services. The couple consultant
+(`POST /api/v1/chat/consult`) can discover and inspect these plans via the
+`list_wedding_plans` / `get_wedding_plan` agent tools.
 
 ### Dashboard (authenticated)
 
@@ -76,6 +82,24 @@ Only catalog-visible `active` vendor/service rows are public.
 
 Owner IDs come only from the verified JWT. Upserts use existing composite
 constraints and server-owned timestamps.
+
+### User wedding-plan acceptance (authenticated)
+
+| Method | Path | Body / response |
+|---|---|---|
+| PUT | `/api/v1/me/plan-items/{itemType}/{itemId}` | `{ "status": "accepted" \| "declined" \| "removed" }` → `{ "itemType", "itemId", "status", "ok": true }` |
+
+`itemType` is `service` or `plan`. Anonymous calls return `401`, an unknown
+item `404`, and an invalid status `422`. The `user_id` is always forced from
+the verified JWT and stored owner-scoped (`user_plan_items`); re-accepting the
+same item is idempotent. Accepted choices are read through the
+security-invoker view `v_user_accepted_plan` (accepted-only, category derived
+from `services.category` or `wedding_plans.style`).
+
+When `POST /api/v1/chat/consult` carries a valid JWT, the caller's accepted-plan
+summary (categories + counts, no PII) is injected as agent context; anonymous
+consults get none. The `get_user_plan` agent tool is read-only — the user, not
+the agent, decides.
 
 ### Social (feed public; mutations authenticated)
 
@@ -126,3 +150,36 @@ pytest -q
 ```
 
 Tests use `tests.fakes.FakeSupabase`; no live network or production data.
+
+## Manual BI smoke test
+
+Start the backend and frontend in separate terminals:
+
+```bash
+# terminal 1
+uvicorn app.main:app --reload --port 8080
+
+# terminal 2
+cd ../LOMAR
+npm run dev
+```
+
+Check the public health endpoint:
+
+```bash
+curl http://localhost:8080/health
+```
+
+Then open `http://localhost:3000/business-intelligence`, sign in with a
+Supabase account, and verify that the overview loads. Run an AI agent, generate
+a report, preview a recommendation action, and ask the copilot about `past
+activities` or `campaign recommendations`. Recommendation previews are
+simulations and do not modify business data.
+
+Private BI routes intentionally reject anonymous requests:
+
+```bash
+curl -i http://localhost:8080/api/v1/business-intelligence/overview
+```
+
+The expected result is `401 Unauthorized`.

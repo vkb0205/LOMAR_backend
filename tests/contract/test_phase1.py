@@ -30,7 +30,7 @@ class TestHealth:
         resp = client.get("/health")
         data = resp.json()
         assert data["ok"] is True
-        assert data["service"] == "LOMAR Vertex AI Nano Banana VTON API"
+        assert data["service"] == "LOMAR Business Intelligence API"
         assert "model" in data
         assert "provider" in data
         assert "project" in data
@@ -88,60 +88,21 @@ class TestErrorEnvelope:
 
     def test_validation_error_uses_envelope(self, client):
         """FastAPI's own validation errors are remapped to the envelope."""
-        resp = client.post("/test-try-on", json={})
+        from tests.conftest import TEST_ADMIN_ID, factory_token
+
+        resp = client.post(
+            "/api/v1/business-intelligence/agents/run",
+            headers={"Authorization": f"Bearer {factory_token(TEST_ADMIN_ID, role='admin')}"},
+            json={},
+        )
         assert resp.status_code == 422
         body = resp.json()
         assert body["error"]["code"] == "validation_error"
         assert "fields" in body["error"]
 
-    def test_unauthenticated_uses_envelope(self, client, settings_override):
-        """With auth enabled, a protected path without a token returns 401."""
-        with settings_override({"ENABLE_AUTH": "true"}):
-            resp = client.post("/consult", json={"message": "hi"})
-            assert resp.status_code == 401
-            body = resp.json()
-            assert body["error"]["code"] == "unauthenticated"
-
-
-# ---------------------------------------------------------------------------
-# Legacy VTON endpoints: contract shape only (AI provider mocked)
-# ---------------------------------------------------------------------------
-
-
-class TestVtonContract:
-    def test_test_try_on_requires_body(self, client):
-        """Missing required fields → 422 validation_error."""
-        resp = client.post("/test-try-on", json={})
-        assert resp.status_code == 422
-        assert resp.json()["error"]["code"] == "validation_error"
-
-    def test_test_try_on_invalid_url(self, client):
-        """Non-http(s) URLs are rejected."""
-        resp = client.post(
-            "/test-try-on",
-            json={
-                "body_image": "not-a-url",
-                "garment_image": "also-not-a-url",
-                "category": "ao-dai",
-            },
-        )
-        assert resp.status_code == 422
-        assert resp.json()["error"]["code"] == "validation_error"
-
-    def test_proxy_image_rejects_blocked_url(self, client):
-        """SSRF guard rejects private/reserved addresses before any fetch."""
-        resp = client.get("/proxy-image", params={"url": "http://169.254.169.254/meta"})
-        assert resp.status_code == 422
-        assert resp.json()["error"]["code"] == "validation_error"
-
-    def test_consult_requires_message(self, client):
-        resp = client.post("/consult", json={})
-        assert resp.status_code == 422
-        assert resp.json()["error"]["code"] == "validation_error"
-
-    def test_upload_missing_files(self, client):
-        resp = client.post(
-            "/test-try-on-upload",
-            data={"category": "ao-dai", "prompt": ""},
-        )
-        assert resp.status_code == 422
+    def test_unauthenticated_uses_envelope(self, client):
+        """Protected BI paths require a valid caller token."""
+        resp = client.post("/api/v1/business-intelligence/chat", json={"message": "hi"})
+        assert resp.status_code == 401
+        body = resp.json()
+        assert body["error"]["code"] == "unauthenticated"

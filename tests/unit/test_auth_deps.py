@@ -18,8 +18,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from starlette.requests import Request
 
-from app.deps.auth import current_user, require_admin, require_user
-from app.errors import ForbiddenError, UnauthenticatedError
+from app.deps.auth import current_user, require_admin, require_business_user, require_user
+from app.errors import DatabaseUnavailableError, ForbiddenError, UnauthenticatedError
 from tests.conftest import TEST_ADMIN_ID, TEST_USER_ID, factory_token
 
 
@@ -150,3 +150,45 @@ class TestRequireAdminFreshLookup:
         user = await current_user(request)
         with pytest.raises(ForbiddenError):
             await require_admin(user, request)
+
+
+class TestRequireBusinessUser:
+    @pytest.mark.asyncio
+    async def test_customer_returns_403(self):
+        token = factory_token(TEST_USER_ID, role="customer")
+        request = _request(token, supabase=_profiles_returning("customer"))
+        user = await current_user(request)
+        with pytest.raises(ForbiddenError):
+            await require_business_user(user, request)
+
+    @pytest.mark.asyncio
+    async def test_vendor_admin_accepted(self):
+        token = factory_token(TEST_USER_ID, role="customer")
+        request = _request(token, supabase=_profiles_returning("vendor_admin"))
+        user = await current_user(request)
+        resolved = await require_business_user(user, request)
+        assert resolved.role == "vendor_admin"
+
+    @pytest.mark.asyncio
+    async def test_admin_accepted(self):
+        token = factory_token(TEST_ADMIN_ID, role="admin")
+        request = _request(token, supabase=_profiles_returning("admin"))
+        user = await current_user(request)
+        resolved = await require_business_user(user, request)
+        assert resolved.role == "admin"
+
+    @pytest.mark.asyncio
+    async def test_lookup_failure_is_503(self):
+        chain = MagicMock()
+        chain.select.return_value = chain
+        chain.eq.return_value = chain
+        chain.single.return_value = chain
+        chain.execute = AsyncMock(side_effect=RuntimeError("postgrest exploded"))
+        client = MagicMock()
+        client.table = MagicMock(return_value=chain)
+
+        token = factory_token(TEST_USER_ID)
+        request = _request(token, supabase=client)
+        user = await current_user(request)
+        with pytest.raises(DatabaseUnavailableError):
+            await require_business_user(user, request)

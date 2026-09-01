@@ -17,7 +17,6 @@ from app.schemas.admin import (
     JourneyTaskWrite,
     PlatformMetrics,
     PostStatusUpdate,
-    ReviewStatusUpdate,
     RoleUpdate,
     ServiceRequestStatusUpdate,
     ServiceStatusUpdate,
@@ -183,33 +182,6 @@ async def delete_comment(
     return await _delete(client, "post_comments", row_id)
 
 
-@router.get("/reviews")
-async def reviews(_: AdminUser, client=Depends(get_supabase_admin)) -> list[dict]:
-    return await repository._list(client, "reviews", order="created_at")
-
-
-@router.put("/reviews/{id}/status")
-async def set_review_status(
-    row_id: Annotated[str, Path(alias="id", min_length=1)],
-    body: ReviewStatusUpdate,
-    _: AdminUser,
-    client=Depends(get_supabase_admin),
-) -> dict[str, bool]:
-    if await repository.get_row(client, "reviews", row_id) is None:
-        raise NotFoundError()
-    await repository.update_row(client, "reviews", row_id, {"status": body.status.value})
-    return {"ok": True}
-
-
-@router.delete("/reviews/{id}")
-async def delete_review(
-    row_id: Annotated[str, Path(alias="id", min_length=1)],
-    _: AdminUser,
-    client=Depends(get_supabase_admin),
-) -> dict[str, bool]:
-    return await _delete(client, "reviews", row_id)
-
-
 @router.get("/journey-tasks")
 async def journey_tasks(_: AdminUser, client=Depends(get_supabase_admin)) -> list[dict]:
     return await repository._list(client, "journey_tasks", order="display_order", desc=False)
@@ -299,11 +271,6 @@ async def set_service_request_status(
         raise NotFoundError()
     await repository.update_row(client, "service_requests", row_id, {"status": body.status.value})
     return {"ok": True}
-
-
-@router.get("/generations")
-async def generations(_: AdminUser, client=Depends(get_supabase_admin)) -> list[dict]:
-    return await repository._list(client, "ai_design_generations", order="created_at", limit=200)
 
 
 @router.get("/analytics", response_model=WebsiteAnalytics)

@@ -1,10 +1,10 @@
 """Application factory and ASGI entry point.
 
-Mounts the public ``/api/vton`` legacy router and the new ``/api/v1`` domain
-routers.  The middleware chain, in registration order:
+Mounts public health checks and the versioned ``/api/v1`` domain routers.  The
+middleware chain, in registration order:
 
 1. ``CorrelationIdMiddleware`` — injects/stores ``X-Correlation-Id``.
-2. ``AuthMiddleware`` — verifies ``ENABLE_AUTH`` gating for legacy endpoints,
+2. ``AuthMiddleware`` — verifies public and authenticated endpoint access,
    extracts the Bearer token, binds a caller-JWT Supabase client to
    ``request.state.supabase`` (used by ``require_admin``), and records the
    ``access_token`` for ``db.get_supabase``.
@@ -17,12 +17,17 @@ PUBLIC vs AUTHENTICATED endpoint policy (Constitution I, plus deviation #1):
       FR-006 / R4; when a token *is* supplied it is still verified and bound.
     * All other ``/api/v1/*`` endpoints **always require a valid Supabase
       JWT** regardless of ``ENABLE_AUTH``.
-    * The legacy root paths (``/proxy-image``, ``/test-try-on*``,
-      ``/consult``) are **gated by ENABLE_AUTH** — when false they accept
-      unauthenticated callers (dev/open mode).
 """
 
 from __future__ import annotations
+
+# Ensure sibling agents package is importable when not installed editable.
+import sys
+from pathlib import Path as _Path
+
+_agents = _Path(__file__).resolve().parents[2] / "agents"
+if _agents.is_dir() and str(_agents) not in sys.path:
+    sys.path.insert(0, str(_agents))
 
 import logging
 import time
@@ -41,11 +46,12 @@ logger = logging.getLogger("app.main")
 from app.routers import health as health_router
 from app.routers.admin import router as admin_router
 from app.routers.analytics import router as analytics_router
+from app.routers.business_intelligence import router as business_intelligence_router
 from app.routers.catalog import router as catalog_router
 from app.routers.chat import router as chat_router
 from app.routers.dashboard import router as dashboard_router
 from app.routers.social import router as social_router
-from app.routers.vton import router as vton_router
+from app.routers.user_plan import router as user_plan_router
 
 # ---------------------------------------------------------------------------
 # Correlation-ID middleware
@@ -83,8 +89,7 @@ class CorrelationIdMiddleware(BaseHTTPMiddleware):
 class AuthMiddleware(BaseHTTPMiddleware):
     """Verify JWTs selectively based on ``ENABLE_AUTH``.
 
-    ``ENABLE_AUTH=false`` (dev): legacy AI endpoints remain open; the
-    ``/api/v1`` tree still requires a JWT and this middleware still extracts
+    The ``/api/v1`` tree requires a JWT for private routes and this middleware extracts
     whatever token is present (or leaves it absent) so that require_admin /
     require_user work uniformly.
 
@@ -117,18 +122,13 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 path.startswith("/api/v1/catalog/")
                 or path == "/api/v1/posts"
                 or path.startswith("/api/v1/analytics/page-views")
-            )
-            legacy_path = path in (
-                "/proxy-image",
-                "/test-try-on",
-                "/test-try-on-upload",
-                "/consult",
+                or path == "/api/v1/chat/consult"
             )
 
             access_token: str = ""
             user_id: str = ""
 
-            auth_required = (always_auth and not public_v1) or (legacy_path and settings.enable_auth)
+            auth_required = always_auth and not public_v1
             if auth_required:
                 from app.deps.auth import _extract_bearer, _decode_token
                 from app.errors import UnauthenticatedError
@@ -232,22 +232,19 @@ def create_app() -> FastAPI:
     # Routers
     # ------------------------------------------------------------------
 
-    # Legacy VTON root — must be mounted at "" so both /proxy-image and
-    # /test-try-on etc work without a /vton prefix (the VITE proxy strips the
-    # /api/vton prefix in dev and the production backend is called directly).
-    application.include_router(vton_router, prefix="", tags=["legacy"])
-
-    # New domain routers — prefix is /api/v1.
-    # Remaining domain routers (catalog, dashboard, social, chat,
-    # admin, analytics) are appended by their respective routers as they
-    # are implemented in the slice phases.
+    # Public root health plus the versioned alias.
+    application.include_router(health_router.router, prefix="", tags=["health"])
     application.include_router(health_router.router, prefix="/api/v1", tags=["health"])
+
+    # Domain routers — prefix is /api/v1.
     application.include_router(catalog_router, prefix="/api/v1")
     application.include_router(dashboard_router, prefix="/api/v1")
     application.include_router(social_router, prefix="/api/v1")
     application.include_router(chat_router, prefix="/api/v1")
     application.include_router(analytics_router, prefix="/api/v1")
+    application.include_router(business_intelligence_router, prefix="/api/v1")
     application.include_router(admin_router, prefix="/api/v1")
+    application.include_router(user_plan_router, prefix="/api/v1")
 
     return application
 

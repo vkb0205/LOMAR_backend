@@ -10,3 +10,6 @@ openai>=1.40,<2.0
 pytest>=8.3,<9.0
 pytest-asyncio>=0.24,<1.0
 supabase>=2.15,<3.0
+
+# Product agents (sibling package). Local: pip install -e ../agents
+# -e ../agents

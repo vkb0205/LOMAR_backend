@@ -23,7 +23,8 @@ if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
 from app.config import get_settings
-from app.services import agent_tools, ai_text
+from chatbot import tools as agent_tools
+from chatbot import runtime as ai_text
 from tests.fakes import FakeSupabase
 
 
@@ -677,3 +678,294 @@ class TestRetrievedServiceCollection:
             {"services": [{"id": "a", "description": "long text", "owner_id": "u1"}]}
         )
         assert rows == [{"id": "a"}]
+
+
+def _plan_store() -> FakeSupabase:
+    return FakeSupabase(
+        rows={
+            "wedding_plans": [
+                {
+                    "id": "p1",
+                    "name": "Gói Trọn Gói Cổ Điển",
+                    "description": "120-150 khách, cổ điển",
+                    "style": "Cổ Điển",
+                    "min_guests": 100,
+                    "max_guests": 180,
+                    "min_budget": 50000000,
+                    "max_budget": 80000000,
+                    "currency": "VND",
+                    "cover_image_url": "https://example.test/p1.jpg",
+                    "status": "active",
+                },
+                {
+                    "id": "p2",
+                    "name": "Gói Tối Giản",
+                    "min_guests": 50,
+                    "max_guests": 120,
+                    "min_budget": 25000000,
+                    "max_budget": 40000000,
+                    "currency": "VND",
+                    "status": "active",
+                },
+                {
+                    "id": "p3",
+                    "name": "Gói Ẩn",
+                    "min_budget": 9000000,
+                    "status": "draft",
+                },
+            ],
+            "wedding_plan_items": [
+                {
+                    "id": "i1",
+                    "wedding_plan_id": "p1",
+                    "service_id": "s1",
+                    "role": "địa điểm",
+                    "sort_order": 0,
+                    "quantity": 1,
+                    "unit_price": 20000000,
+                    "currency": "VND",
+                    "services": {"id": "s1", "name": "Sảnh cưới", "category": "venue", "vendor_id": "v1"},
+                },
+                {
+                    "id": "i2",
+                    "wedding_plan_id": "p1",
+                    "service_id": "s2",
+                    "role": "chụp ảnh",
+                    "sort_order": 1,
+                    "quantity": 1,
+                    "unit_price": 5000000,
+                    "currency": "VND",
+                    "services": {"id": "s2", "name": "Gói chụp ảnh", "category": "photo", "vendor_id": "v1"},
+                },
+            ],
+            "services": [
+                {"id": "s1", "vendor_id": "v1", "name": "Sảnh cưới", "category": "venue", "status": "active"},
+                {"id": "s2", "vendor_id": "v1", "name": "Gói chụp ảnh", "category": "photo", "status": "active"},
+            ],
+        }
+    )
+
+
+class TestWeddingPlanTools:
+    @pytest.mark.asyncio
+    async def test_list_wedding_plans_returns_only_active_and_allowlisted(
+        self,
+    ):
+        db = _plan_store()
+        result = await agent_tools.list_wedding_plans(db)
+        ids = [p["id"] for p in result["plans"]]
+        # p2 (25tr) cheaper than p1 (50tr) → price-ascending order; draft p3 hidden.
+        assert ids == ["p2", "p1"]
+        # Allowlist only — status and no PII, but also no extra columns.
+        assert all("status" not in p for p in result["plans"])
+        assert all("email" not in p for p in result["plans"])
+
+    @pytest.mark.asyncio
+    async def test_list_wedding_plans_filters_by_budget(self):
+        db = _plan_store()
+        result = await agent_tools.list_wedding_plans(db, max_budget=45000000)
+        assert [p["id"] for p in result["plans"]] == ["p2"]
+
+    @pytest.mark.asyncio
+    async def test_list_wedding_plans_filters_by_guest_count(self):
+        db = _plan_store()
+        result = await agent_tools.list_wedding_plans(db, min_guests=150)
+        # p1 reaches 180 guests; p2 only 120 → excluded.
+        assert [p["id"] for p in result["plans"]] == ["p1"]
+
+    @pytest.mark.asyncio
+    async def test_list_wedding_plans_empty_when_nothing_matches(self):
+        db = _plan_store()
+        result = await agent_tools.list_wedding_plans(db, max_budget=1000000)
+        assert result["plans"] == []
+        assert result["count"] == 0
+
+    @pytest.mark.asyncio
+    async def test_get_wedding_plan_returns_plan_and_resolved_items(self):
+        db = _plan_store()
+        result = await agent_tools.get_wedding_plan(db, plan_id="p1")
+        assert result["found"] is True
+        assert result["plan"]["id"] == "p1"
+        item_roles = [i["role"] for i in result["items"]]
+        assert item_roles == ["địa điểm", "chụp ảnh"]
+        # Item services are projected, never include PII.
+        assert all("email" not in i for i in result["items"])
+        assert result["items"][0]["service"]["name"] == "Sảnh cưới"
+
+    @pytest.mark.asyncio
+    async def test_get_wedding_plan_unknown_id_reports_not_found(self):
+        db = _plan_store()
+        result = await agent_tools.get_wedding_plan(db, plan_id="nope")
+        assert result["found"] is False
+
+    @pytest.mark.asyncio
+    async def test_plan_tools_are_registered_for_dispatch(self):
+        for name in ("list_wedding_plans", "get_wedding_plan"):
+            assert name in agent_tools._DISPATCH
+
+    @pytest.mark.asyncio
+    async def test_plan_tools_are_in_tool_specs(self):
+        names = {t["function"]["name"] for t in agent_tools.TOOL_SPECS}
+        assert "list_wedding_plans" in names
+        assert "get_wedding_plan" in names
+
+
+class TestWeddingPlanCardCollection:
+    """Plan rows and plan item services map onto the shared card shape."""
+
+    def _collect(self, *results: dict) -> list[dict]:
+        sink: list[dict] = []
+        seen: set[str] = set()
+        for result in results:
+            ai_text._collect_retrieved_services(result, sink, seen)
+        return sink
+
+    def test_list_result_maps_plan_to_card_shape(self):
+        rows = self._collect(
+            {
+                "count": 1,
+                "plans": [
+                    {
+                        "id": "p1",
+                        "name": "Gói A",
+                        "style": "Cổ Điển",
+                        "min_budget": 50000000,
+                        "currency": "VND",
+                        "cover_image_url": "https://x/p.jpg",
+                    }
+                ],
+            }
+        )
+        assert rows == [
+            {
+                "id": "p1",
+                "name": "Gói A",
+                "category": "Cổ Điển",
+                "base_price": 50000000,
+                "currency": "VND",
+                "thumbnail_url": "https://x/p.jpg",
+            }
+        ]
+
+    def test_detail_result_collects_item_services(self):
+        rows = self._collect(
+            {
+                "found": True,
+                "plan": {"id": "p1", "name": "Gói A"},
+                "items": [
+                    {
+                        "role": "địa điểm",
+                        "unit_price": 20000000,
+                        "currency": "VND",
+                        "service": {"id": "s1", "name": "Sảnh cưới", "category": "venue", "vendor_id": "v1"},
+                    }
+                ],
+            }
+        )
+        assert rows == [
+            {
+                "id": "s1",
+                "name": "Sảnh cưới",
+                "category": "venue",
+                "base_price": 20000000,
+                "currency": "VND",
+                "vendor_id": "v1",
+            }
+        ]
+
+    def test_found_false_contributes_nothing(self):
+        rows = self._collect({"found": False, "reason": "no such plan"})
+        assert rows == []
+
+
+class TestGetUserPlan:
+    """The read-only accepted-plan recall tool (feature 003)."""
+
+    def _store(self, rows=None) -> FakeSupabase:
+        default = [
+            {
+                "user_id": "u1",
+                "item_type": "service",
+                "service_id": "s1",
+                "plan_id": None,
+                "category": "Venue",
+                "service_name": "Sảnh cưới Hoàng Gia",
+                "service_price": 20000000,
+                "accepted_at": "2026-09-01T00:00:00+00:00",
+            },
+            {
+                "user_id": "u1",
+                "item_type": "service",
+                "service_id": "s2",
+                "plan_id": None,
+                "category": "Photo",
+                "service_name": "Gói chụp ảnh",
+                "service_price": 5000000,
+                "accepted_at": "2026-09-01T00:00:00+00:00",
+            },
+            {
+                "user_id": "u1",
+                "item_type": "plan",
+                "plan_id": "p1",
+                "service_id": None,
+                "category": "Cổ Điển",
+                "plan_name": "Gói Trọn Gói Cổ Điển",
+                "accepted_at": "2026-09-01T00:00:00+00:00",
+            },
+        ]
+        return FakeSupabase(rows={"v_user_accepted_plan": rows if rows is not None else default})
+
+    @pytest.mark.asyncio
+    async def test_only_allowlisted_fields_surface(self):
+        db = self._store()
+        result = await agent_tools.get_user_plan(db)
+        assert result["found"] is True
+        items = [i for g in result["groups"] for i in g["items"]]
+        flat = [k for i in items for k in i.keys()]
+        assert "vendor_id" not in flat and "email" not in flat
+        assert all(k in agent_tools.ACCEPTED_PLAN_PUBLIC_FIELDS for k in flat)
+
+    @pytest.mark.asyncio
+    async def test_groups_by_category_with_counts(self):
+        db = self._store()
+        result = await agent_tools.get_user_plan(db)
+        by_cat = {g["category"]: g["count"] for g in result["groups"]}
+        assert by_cat == {"Venue": 1, "Photo": 1, "Cổ Điển": 1}
+
+    @pytest.mark.asyncio
+    async def test_single_category_filter(self):
+        db = self._store()
+        result = await agent_tools.get_user_plan(db, category="photo")
+        assert [g["category"] for g in result["groups"]] == ["Photo"]
+        assert result["count"] == 1
+
+    @pytest.mark.asyncio
+    async def test_non_accepted_rows_are_excluded(self):
+        # A declined/removed row present in the table must not surface: the view
+        # contract is `accepted` only, so the tool trusts it and the fake mirrors it.
+        db = FakeSupabase(
+            rows={
+                "user_plan_items": [
+                    {"user_id": "u1", "status": "declined", "category": "Venue"}
+                ],
+                "v_user_accepted_plan": [],
+            }
+        )
+        result = await agent_tools.get_user_plan(db)
+        assert result["found"] is False
+        assert result["groups"] == []
+        assert result["count"] == 0
+
+    @pytest.mark.asyncio
+    async def test_empty_accepted_plan_reports_honest_empty_state(self):
+        db = self._store(rows=[])
+        result = await agent_tools.get_user_plan(db)
+        assert result["found"] is False
+        assert result["groups"] == []
+
+    def test_tool_registered_for_dispatch(self):
+        assert "get_user_plan" in agent_tools._DISPATCH
+
+    def test_tool_in_specs(self):
+        names = {t["function"]["name"] for t in agent_tools.TOOL_SPECS}
+        assert "get_user_plan" in names

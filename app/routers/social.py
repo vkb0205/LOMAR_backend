@@ -13,8 +13,6 @@ from app.repositories import social as repository
 from app.schemas.social import (
     CommentCreate,
     CommentUpdate,
-    FollowCreate,
-    FollowResponse,
     LikeResponse,
     MutationResult,
     PostCreate,
@@ -41,7 +39,6 @@ async def create_post(
     user: Annotated[AuthenticatedUser, Depends(require_user)],
     client=Depends(get_supabase),
 ) -> dict:
-    await repository.validate_tags(client, body.tagIds)
     post = await repository.create_post(client, user.user_id, body.model_dump())
     return post
 
@@ -145,54 +142,3 @@ async def delete_comment(
     )
     await repository.delete_by_id(client, "post_comments", "id", comment_id)
     return MutationResult()
-
-
-@router.get("/follows/{followeeType}/{followeeId}", response_model=FollowResponse)
-async def get_follow_state(
-    followee_type: Annotated[str, Path(alias="followeeType")],
-    followee_id: Annotated[str, Path(alias="followeeId", min_length=1)],
-    user: Annotated[AuthenticatedUser, Depends(current_user)],
-    client=Depends(get_supabase),
-) -> FollowResponse:
-    """Follower count (public) plus this caller's follow state, if any.
-
-    Public like the feed: an anonymous caller gets the count with
-    ``following: false`` rather than a 401, so a logged-out visitor can still
-    see follower numbers on a vendor or profile page.
-    """
-    if followee_type not in ("user", "vendor"):
-        raise ValidationError(fields={"followeeType": "Must be 'user' or 'vendor'."})
-    following = False
-    if user.user_id:
-        following = bool(
-            await repository.follow_rows(client, user.user_id, followee_type, followee_id)
-        )
-    count = await repository.follow_count(client, followee_type, followee_id)
-    return FollowResponse(following=following, followerCount=count)
-
-
-@router.post("/follows", response_model=FollowResponse)
-async def create_follow(
-    body: FollowCreate,
-    user: Annotated[AuthenticatedUser, Depends(require_user)],
-    client=Depends(get_supabase),
-) -> FollowResponse:
-    if not await repository.target_exists(client, body.followeeType.value, body.followeeId):
-        raise ValidationError(fields={"followeeId": "Target does not exist."})
-    await repository.create_follow(client, user.user_id, body.followeeType.value, body.followeeId)
-    count = await repository.follow_count(client, body.followeeType.value, body.followeeId)
-    return FollowResponse(following=True, followerCount=count)
-
-
-@router.delete("/follows/{followeeType}/{followeeId}", response_model=FollowResponse)
-async def delete_follow(
-    followee_type: Annotated[str, Path(alias="followeeType")],
-    followee_id: Annotated[str, Path(alias="followeeId", min_length=1)],
-    user: Annotated[AuthenticatedUser, Depends(require_user)],
-    client=Depends(get_supabase),
-) -> FollowResponse:
-    if followee_type not in ("user", "vendor"):
-        raise ValidationError(fields={"followeeType": "Must be 'user' or 'vendor'."})
-    await repository.delete_follow(client, user.user_id, followee_type, followee_id)
-    count = await repository.follow_count(client, followee_type, followee_id)
-    return FollowResponse(following=False, followerCount=count)

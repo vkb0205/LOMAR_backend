@@ -16,9 +16,7 @@ def _store():
         "services": [],
         "posts": [],
         "post_comments": [],
-        "reviews": [],
         "service_requests": [],
-        "ai_design_generations": [],
         "journey_tasks": [],
         "vouchers": [],
         "analytics_page_views": [],
@@ -61,11 +59,9 @@ def test_every_admin_route_rejects_anonymous_and_non_admin(client, app):
         "/api/v1/admin/services",
         "/api/v1/admin/posts",
         "/api/v1/admin/comments",
-        "/api/v1/admin/reviews",
         "/api/v1/admin/journey-tasks",
         "/api/v1/admin/vouchers",
         "/api/v1/admin/service-requests",
-        "/api/v1/admin/generations",
         "/api/v1/admin/analytics",
     ):
         assert client.get(path).status_code == 401

@@ -38,12 +38,6 @@ class CommentStatus(str, Enum):
     flagged = "flagged"
 
 
-class ReviewStatus(str, Enum):
-    published = "published"
-    hidden = "hidden"
-    flagged = "flagged"
-
-
 class ServiceRequestStatus(str, Enum):
     new = "new"
     contacted = "contacted"
@@ -66,11 +60,8 @@ class PlatformMetrics(BaseModel):
     posts: int
     postsHidden: int
     commentsFlagged: int
-    reviewsFlagged: int
     leads: int
     leadsNew: int
-    generations: int
-    generationsFailed: int
 
 
 class RoleUpdate(BaseModel):
@@ -91,10 +82,6 @@ class PostStatusUpdate(BaseModel):
 
 class CommentStatusUpdate(BaseModel):
     status: CommentStatus
-
-
-class ReviewStatusUpdate(BaseModel):
-    status: ReviewStatus
 
 
 class ServiceRequestStatusUpdate(BaseModel):

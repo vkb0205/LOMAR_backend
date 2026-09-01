@@ -79,7 +79,7 @@ class TestCorrelationId:
 
     def test_client_supplied_id_echoed_on_auth_error(self, client, settings_override):
         with settings_override({"ENABLE_AUTH": "true"}):
-            response = client.get("/consult", headers={"X-Correlation-Id": "xyz-789"})
+            response = client.get("/api/v1/business-intelligence/overview", headers={"X-Correlation-Id": "xyz-789"})
         assert response.headers.get("X-Correlation-Id") == "xyz-789"
         assert response.status_code == 401
 

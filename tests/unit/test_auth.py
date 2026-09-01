@@ -192,3 +192,78 @@ class TestRequireAdmin:
             with pytest.raises(UnauthenticatedError):
                 await require_admin(user, req)
             get_settings.cache_clear()
+
+
+# ---------------------------------------------------------------------------
+# Tests: ES256 / JWKS path (Supabase asymmetric signing)
+# ---------------------------------------------------------------------------
+
+
+class TestAsymmetricJwt:
+    def test_es256_token_accepted_via_jwks(self, monkeypatch):
+        """Tokens signed ES256 must verify against the JWKS public key."""
+        from cryptography.hazmat.primitives.asymmetric import ec
+        from cryptography.hazmat.primitives import serialization
+        from app.deps import auth as auth_mod
+        from app.deps.auth import _decode_token
+
+        private_key = ec.generate_private_key(ec.SECP256R1())
+        public_key = private_key.public_key()
+
+        now = int(time.time())
+        token = jwt.encode(
+            {
+                "sub": "es256-user",
+                "aud": AUDIENCE,
+                "exp": now + 3600,
+                "role": "admin",
+            },
+            private_key,
+            algorithm="ES256",
+            headers={"kid": "test-es256-kid"},
+        )
+
+        class _Key:
+            def __init__(self, key):
+                self.key = key
+
+        class _Client:
+            def get_signing_key_from_jwt(self, _token):
+                return _Key(public_key)
+
+        monkeypatch.setenv("SUPABASE_URL", "https://test-project.supabase.co")
+        monkeypatch.setenv("SUPABASE_JWT_SECRET", SECRET)
+        monkeypatch.setenv("SUPABASE_JWT_AUDIENCE", AUDIENCE)
+        get_settings.cache_clear()
+        auth_mod._jwks_client = None
+        auth_mod._jwks_client_url = None
+
+        monkeypatch.setattr(auth_mod, "_get_jwks_client", lambda _settings: _Client())
+
+        payload = _decode_token(token)
+        assert payload.sub == "es256-user"
+        assert payload.role == "admin"
+        get_settings.cache_clear()
+
+    def test_unknown_alg_rejected(self, monkeypatch):
+        from app.deps.auth import _decode_token
+        from app.errors import UnauthenticatedError
+
+        # none-alg style header is rejected by algorithm allowlist before verify
+        # Build a minimal three-segment token with alg=none via jwt lib if possible.
+        # PyJWT refuses to encode alg=none by default; craft header manually.
+        import base64, json
+
+        def b64(data: bytes) -> str:
+            return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
+
+        header = b64(json.dumps({"alg": "none", "typ": "JWT"}).encode())
+        body = b64(json.dumps({"sub": "x", "aud": AUDIENCE, "exp": int(time.time()) + 60}).encode())
+        token = f"{header}.{body}."
+
+        monkeypatch.setenv("SUPABASE_JWT_SECRET", SECRET)
+        get_settings.cache_clear()
+        with pytest.raises(UnauthenticatedError) as ei:
+            _decode_token(token)
+        assert "alg value is not allowed" in str(ei.value)
+        get_settings.cache_clear()

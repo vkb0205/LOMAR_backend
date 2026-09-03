@@ -474,6 +474,23 @@ class TestCategoryResolution:
         assert agent_tools.resolve_service_category("") is None
         assert agent_tools.resolve_service_category(None) is None
 
+    def test_venue_phrases_resolve_to_venue(self):
+        """'nhà hàng tiệc cưới' names the venue category despite extra words."""
+        assert agent_tools.resolve_service_category("nhà hàng tiệc cưới") == "Venue"
+        assert agent_tools.resolve_service_category("nhà hàng") == "Venue"
+        assert agent_tools.resolve_service_category("sảnh cưới") == "Venue"
+        assert agent_tools.resolve_service_category("địa điểm tổ chức tiệc cưới") == "Venue"
+
+    def test_category_embedded_in_a_longer_phrase_resolves(self):
+        """Extra words around a category name must not hide the category."""
+        assert agent_tools.resolve_service_category("vest cưới dưới 10 triệu") == "Vest"
+        assert agent_tools.resolve_service_category("chụp ảnh cưới ngoài trời") == "Studio"
+        assert agent_tools.resolve_service_category("nhẫn cưới") == "Trang Sức"
+
+    def test_two_word_alias_wins_over_single_token(self):
+        """'nhà hàng' (venue) must not be shadowed by the bare token 'hàng'."""
+        assert agent_tools.resolve_service_category("nhà hàng tiệc cưới") == "Venue"
+
     @pytest.mark.asyncio
     async def test_search_services_accepts_canonical_vest(self, vest_catalog):
         result = await agent_tools.search_services(

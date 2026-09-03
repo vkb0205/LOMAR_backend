@@ -171,22 +171,46 @@ def _normalise(text: str) -> str:
     return " ".join(text.strip().lower().split())
 
 
+def _alias_hit(phrase: str) -> str | None:
+    """Return the canonical category whose alias set contains *phrase*, or None."""
+    for canonical, aliases in SERVICE_CATEGORY_REGISTRY.items():
+        if phrase in aliases or phrase == canonical:
+            return canonical.title()
+    return None
+
+
 def resolve_service_category(mention: str | None) -> str | None:
     """Return the canonical ``services.category`` value for *mention*.
 
     Returns ``None`` when *mention* does not map to a defined category — the
     caller (the agent) must then ask a clarifying question rather than guessing
     or falling back to keyword search across unrelated rows.
+
+    Matching is forgiving of the extra words users wrap around a category name.
+    A user asking for "nhà hàng tiệc cưới" names the ``venue`` category even
+    though the whole phrase is not a stored alias; likewise "vest cưới dưới 10
+    triệu" names ``vest``. So after an exact whole-phrase match we also match
+    against each consecutive token pair and single token, longest first, which
+    keeps "nhà hàng" (venue) from being shadowed by the bare token "hàng" while
+    still catching "áo vest" (vest) and "nhẫn" (trang sức).
     """
     if not mention:
         return None
     norm = _normalise(mention)
     if not norm:
         return None
-    # Exact alias hit first.
-    for canonical, aliases in SERVICE_CATEGORY_REGISTRY.items():
-        if norm in aliases or norm == canonical:
-            return canonical.title()
+    # Exact whole-phrase alias hit first (fast path, no false positives).
+    exact = _alias_hit(norm)
+    if exact is not None:
+        return exact
+    # Then token-level: consecutive pairs before single tokens, so a two-word
+    # alias ("nhà hàng", "vest cưới") wins over a coincidental single-token hit.
+    tokens = norm.split()
+    for size in (2, 1):
+        for i in range(len(tokens) - size + 1):
+            hit = _alias_hit(" ".join(tokens[i : i + size]))
+            if hit is not None:
+                return hit
     return None
 
 
@@ -684,8 +708,12 @@ TOOL_SPECS: list[dict[str, Any]] = [
             "name": "list_wedding_plans",
             "description": (
                 "List active curated wedding packages (gói cưới), price-ascending. "
-                "Use when the user asks about pre-packaged wedding plans or bundles "
-                "rather than a single service. Optionally filter by budget or guest count."
+                "Use ONLY when the user explicitly asks for a pre-packaged wedding "
+                "plan or bundle (e.g. 'gói cưới', 'combo', 'trọn gói'). Do NOT use "
+                "this for a request about a single service type — a user asking for "
+                "'nhà hàng tiệc cưới', 'sảnh cưới' or 'địa điểm tổ chức' wants a "
+                "venue, so resolve the category and call search_services instead. "
+                "Optionally filter by budget or guest count."
             ),
             "parameters": {
                 "type": "object",

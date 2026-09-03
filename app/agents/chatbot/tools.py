@@ -296,6 +296,155 @@ async def list_service_categories(client: AsyncClient) -> dict[str, Any]:
     return {"categories": categories}
 
 
+# --- Wedding-plan and accepted-plan tools -----------------------------------
+
+# Only `active` plans are public catalog (mirrors repositories/catalog.py).
+PLAN_VISIBLE_STATUS = "active"
+
+# Allowlist for a wedding-plan row handed to the model. No PII, no status
+# plumbing — just what the couple needs to compare curated packages.
+PLAN_PUBLIC_FIELDS: frozenset[str] = frozenset(
+    {
+        "id",
+        "name",
+        "description",
+        "style",
+        "min_guests",
+        "max_guests",
+        "min_budget",
+        "max_budget",
+        "currency",
+        "cover_image_url",
+    }
+)
+
+# Allowlist for an accepted-plan item surfaced to the model. Deliberately
+# excludes vendor_id / email / any contact or ownership column.
+ACCEPTED_PLAN_PUBLIC_FIELDS: frozenset[str] = frozenset(
+    {
+        "item_type",
+        "service_id",
+        "plan_id",
+        "category",
+        "service_name",
+        "service_price",
+        "plan_name",
+    }
+)
+
+
+async def list_wedding_plans(
+    client: AsyncClient,
+    *,
+    max_budget: float | None = None,
+    min_guests: int | None = None,
+    limit: int | None = None,
+) -> dict[str, Any]:
+    """List active curated wedding plans, price-ascending, optionally filtered."""
+    capped = min(limit or _row_limit(), _row_limit())
+
+    def _build() -> Any:
+        q = (
+            client.table("wedding_plans")
+            .select(",".join(sorted(PLAN_PUBLIC_FIELDS)))
+            .eq("status", PLAN_VISIBLE_STATUS)
+        )
+        if max_budget is not None:
+            q = q.lte("min_budget", max_budget)
+        if min_guests is not None:
+            q = q.gte("max_guests", min_guests)
+        return q.order("min_budget", desc=False).limit(capped).execute()
+
+    rows = unwrap(await run_db(_build)) or []
+    return {
+        "count": len(rows),
+        "plans": [_project(r, PLAN_PUBLIC_FIELDS) for r in rows],
+    }
+
+
+async def get_wedding_plan(
+    client: AsyncClient, *, plan_id: str
+) -> dict[str, Any]:
+    """Return one active plan plus its resolved item services."""
+
+    def _plan() -> Any:
+        return (
+            client.table("wedding_plans")
+            .select(",".join(sorted(PLAN_PUBLIC_FIELDS)))
+            .eq("id", plan_id)
+            .eq("status", PLAN_VISIBLE_STATUS)
+            .execute()
+        )
+
+    plan_rows = unwrap(await run_db(_plan)) or []
+    if not plan_rows:
+        return {"found": False, "reason": "No active wedding plan with that id."}
+
+    def _items() -> Any:
+        return (
+            client.table("wedding_plan_items")
+            .select("role,quantity,unit_price,currency,services(id,name,category,vendor_id)")
+            .eq("wedding_plan_id", plan_id)
+            .order("sort_order")
+            .execute()
+        )
+
+    item_rows = unwrap(await run_db(_items)) or []
+    items = []
+    for row in item_rows:
+        service = row.get("services") or {}
+        items.append(
+            {
+                "role": row.get("role", ""),
+                "quantity": row.get("quantity", 1),
+                "unit_price": row.get("unit_price"),
+                "currency": row.get("currency"),
+                "service": _project(service, SERVICE_PUBLIC_FIELDS),
+            }
+        )
+    return {
+        "found": True,
+        "plan": _project(plan_rows[0], PLAN_PUBLIC_FIELDS),
+        "items": items,
+    }
+
+
+async def get_user_plan(
+    client: AsyncClient, *, category: str | None = None
+) -> dict[str, Any]:
+    """Recall the caller's accepted plan (read-only, allowlisted).
+
+    Reads the ``v_user_accepted_plan`` view, which is RLS-scoped to the caller
+    and contains only accepted rows. Groups by category with counts so the agent
+    can acknowledge existing choices without re-suggesting them.
+    """
+
+    def _build() -> Any:
+        q = client.table("v_user_accepted_plan").select("*")
+        if category:
+            safe = category.strip().replace("%", r"\%").replace("_", r"\_")
+            if safe:
+                q = q.ilike("category", safe)
+        return q.execute()
+
+    rows = unwrap(await run_db(_build)) or []
+    if not rows:
+        return {"found": False, "groups": [], "count": 0}
+
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        projected = _project(row, ACCEPTED_PLAN_PUBLIC_FIELDS)
+        cat = projected.get("category") or "Khác"
+        grouped.setdefault(cat, []).append(projected)
+
+    groups = [
+        {"category": cat, "count": len(items), "items": items}
+        for cat, items in grouped.items()
+    ]
+    total = sum(g["count"] for g in groups)
+    return {"found": True, "groups": groups, "count": total}
+
+
 # --- Provider-facing schemas ------------------------------------------------
 # OpenAI-compatible JSON Schema. `additionalProperties: false` keeps a model
 # from smuggling unexpected keys into the dispatcher.
@@ -410,6 +559,70 @@ TOOL_SPECS: list[dict[str, Any]] = [
             "parameters": {"type": "object", "properties": {}, "additionalProperties": False},
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_wedding_plans",
+            "description": (
+                "List active curated wedding packages (gói cưới), price-ascending. "
+                "Use when the user asks about pre-packaged wedding plans or bundles "
+                "rather than a single service. Optionally filter by budget or guest count."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "max_budget": {
+                        "type": "number",
+                        "description": "Maximum plan min_budget, in VND.",
+                    },
+                    "min_guests": {
+                        "type": "integer",
+                        "description": "Minimum guest capacity the plan must reach.",
+                    },
+                },
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_wedding_plan",
+            "description": (
+                "Fetch one wedding plan and the services it bundles. Requires a plan "
+                "id obtained from list_wedding_plans — never guess an id."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "plan_id": {"type": "string", "description": "Wedding plan UUID from a prior list result."},
+                },
+                "required": ["plan_id"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_user_plan",
+            "description": (
+                "Recall the caller's accepted wedding plan (services and packages "
+                "they have already chosen). Use to acknowledge existing choices and "
+                "avoid re-suggesting them. Optionally filter by category."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "category": {
+                        "type": "string",
+                        "description": "Optional category to filter the accepted plan by.",
+                    },
+                },
+                "additionalProperties": False,
+            },
+        },
+    },
 ]
 
 # Explicit name -> implementation map. Dispatch consults this dict only, so a
@@ -420,6 +633,9 @@ _DISPATCH: dict[str, Callable[..., Awaitable[dict[str, Any]]]] = {
     "search_vendors": search_vendors,
     "get_vendor_details": get_vendor_details,
     "list_service_categories": list_service_categories,
+    "list_wedding_plans": list_wedding_plans,
+    "get_wedding_plan": get_wedding_plan,
+    "get_user_plan": get_user_plan,
 }
 
 

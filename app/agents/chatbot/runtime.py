@@ -240,7 +240,7 @@ _MEDIA_RE = re.compile(
 # Bare http(s) URLs the model emitted outside of markdown (e.g. a pasted
 # `thumbnail_url`). The card row already carries the image, so a raw URL in
 # prose is noise for the user.
-_URL_RE = re.compile(r"\s*https?://[^\s<>]+", re.IGNORECASE)
+_URL_RE = re.compile(r"https?://[^\s<>]+", re.IGNORECASE)
 
 # Bold/italic emphasis wrappers, matched only after media/URL stripping so any
 # `*` that was part of a caption is long gone. Two alternatives, bold before
@@ -322,16 +322,67 @@ def _collect_retrieved_services(
 ) -> None:
     """Accumulate service rows from a tool result into *sink*, deduped by id.
 
-    Both ``search_services`` and ``get_vendor_details`` return rows under a
-    ``services`` key, so one extractor covers both. Vendor rows are ignored:
-    the card row shows services only.
+    Handles three tool result shapes:
 
-    Order is first-seen, which mirrors the tool's own price-ascending sort. A
-    row without an ``id`` is skipped — the UI needs a stable React key and a
-    link target, and neither can be synthesised safely.
+    - ``search_services`` / ``get_vendor_details`` return rows under a
+      ``services`` key.
+    - ``list_wedding_plans`` returns rows under a ``plans`` key; each plan maps
+      onto the shared card shape (``style`` -> ``category``, ``min_budget`` ->
+      ``base_price``, ``cover_image_url`` -> ``thumbnail_url``).
+    - ``get_wedding_plan`` returns ``items``; each item's ``service`` is
+      collected with the item's ``unit_price``/``currency`` as the card price.
+
+    Vendor rows are ignored: the card row shows services only. Order is
+    first-seen, which mirrors the tool's own price-ascending sort. A row without
+    an ``id`` is skipped — the UI needs a stable React key and a link target,
+    and neither can be synthesised safely.
     """
     if not isinstance(result, dict) or "error" in result:
         return
+
+    if isinstance(result.get("plans"), list):
+        for row in result["plans"]:
+            if not isinstance(row, dict):
+                continue
+            identifier = row.get("id")
+            if not isinstance(identifier, str) or identifier in seen:
+                continue
+            seen.add(identifier)
+            sink.append(
+                {
+                    "id": identifier,
+                    "name": row.get("name"),
+                    "category": row.get("style"),
+                    "base_price": row.get("min_budget"),
+                    "currency": row.get("currency"),
+                    "thumbnail_url": row.get("cover_image_url"),
+                }
+            )
+        return
+
+    if isinstance(result.get("items"), list):
+        for item in result["items"]:
+            if not isinstance(item, dict):
+                continue
+            service = item.get("service")
+            if not isinstance(service, dict):
+                continue
+            identifier = service.get("id")
+            if not isinstance(identifier, str) or identifier in seen:
+                continue
+            seen.add(identifier)
+            card = {
+                "id": identifier,
+                "name": service.get("name"),
+                "category": service.get("category"),
+                "base_price": item.get("unit_price"),
+                "currency": item.get("currency"),
+                "thumbnail_url": service.get("thumbnail_url"),
+                "vendor_id": service.get("vendor_id"),
+            }
+            sink.append({k: v for k, v in card.items() if v is not None})
+        return
+
     rows = result.get("services")
     if not isinstance(rows, list):
         return
@@ -361,6 +412,7 @@ async def run_consultant_agent(
     *,
     db: AsyncClient | None = None,
     history: list[dict[str, Any]] | None = None,
+    extra_context: str | None = None,
 ) -> tuple[str, list[str], list[dict[str, Any]]]:
     """Run the consultant with tool access.
 
@@ -368,6 +420,10 @@ async def run_consultant_agent(
     for observability. ``retrieved_services`` is the deduped set of catalog rows
     the tools actually returned this turn, so the UI can render product cards
     instead of asking the model to describe images or URLs in prose.
+
+    ``extra_context`` is trusted, server-derived session context (e.g. the
+    caller's accepted-plan summary) injected into the system prompt. It is
+    never raw user input.
 
     Falls back to a plain completion when tools are disabled or no database
     client is available, so the consultant still answers rather than erroring.
@@ -382,7 +438,9 @@ async def run_consultant_agent(
         reply = await asyncio.to_thread(generate_chat_reply, user_message)
         return strip_markdown_emphasis(reply), [], []
 
-    return await _run_openai_agent(user_message, db=db, history=history)
+    return await _run_openai_agent(
+        user_message, db=db, history=history, extra_context=extra_context
+    )
 
 
 async def _run_openai_agent(
@@ -390,13 +448,14 @@ async def _run_openai_agent(
     *,
     db: AsyncClient,
     history: list[dict[str, Any]] | None,
+    extra_context: str | None = None,
 ) -> tuple[str, list[str], list[dict[str, Any]]]:
     settings = get_settings()
     model = _resolve_model()
     client = _openai_client()
 
     messages: list[dict[str, Any]] = [
-        {"role": "system", "content": build_system_prompt()},
+        {"role": "system", "content": build_system_prompt(extra_context)},
         *sanitize_history(history),
         {"role": "user", "content": user_message},
     ]

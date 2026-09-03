@@ -21,11 +21,16 @@ PUBLIC vs AUTHENTICATED endpoint policy (Constitution I, plus deviation #1):
 
 from __future__ import annotations
 
-# Ensure sibling agents package is importable when not installed editable.
+# Ensure the vendored agent packages (chatbot, business_intelligence) are
+# importable as top-level modules. They live under app/agents/ and are imported
+# as bare `chatbot` / `business_intelligence` by the routers and service shims.
+# This works both locally and in the Docker image (app/agents is always inside
+# the repo), unlike the previous sibling ../agents path that only existed in
+# some local checkouts.
 import sys
 from pathlib import Path as _Path
 
-_agents = _Path(__file__).resolve().parents[2] / "agents"
+_agents = _Path(__file__).resolve().parent / "agents"
 if _agents.is_dir() and str(_agents) not in sys.path:
     sys.path.insert(0, str(_agents))
 

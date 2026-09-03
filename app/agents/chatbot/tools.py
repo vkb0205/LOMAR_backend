@@ -134,6 +134,62 @@ def _row_limit() -> int:
     return get_settings().agent_tool_row_limit
 
 
+# --- Canonical category registry --------------------------------------------
+# The catalog stores a small, fixed set of `services.category` values. Free-text
+# user wording almost never equals one of those values verbatim ("vest cưới dưới
+# 10 triệu" names no stored category called "Vest Cưới" — the catalog stores
+# "Vest"). The model is unreliable at mapping that wording onto the stored
+# value, so the mapping is enforced here, in code, where it cannot be argued
+# with. `search_services(category=...)` only ever receives one of these exact
+# canonical values.
+#
+# Canonical name == the literal `services.category` value stored in the DB.
+# Keys are lowercased for lookup.
+SERVICE_CATEGORY_REGISTRY: dict[str, frozenset[str]] = {
+    # canonical : aliases (lowercased, so matching is case/however-normalised)
+    "vest": frozenset({"vest", "vest cưới", "áo vest", "suit", "com lê"}),
+    "váy cưới": frozenset({"váy cưới", "váy", "đầm cưới", "wedding gown", "dress"}),
+    "studio": frozenset({"studio", "chụp ảnh", "nhiếp ảnh", "photography", "chụp hình"}),
+    "venue": frozenset({"venue", "nhà hàng", "địa điểm", "sảnh cưới"}),
+    "make up": frozenset({"make up", "makeup", "trang điểm", "cô dâu make up"}),
+    "planner": frozenset({"planner", "wedding planner", "tổ chức cưới", "điều phối"}),
+    "trang trí": frozenset({"trang trí", "decor", "trang hoàng", "trang tri"}),
+    "thiệp cưới": frozenset({"thiệp cưới", "thiệp", "invitation", "giấy mời"}),
+    "trang sức": frozenset({"trang sức", "trang suc", "jewelry", "nhẫn", "phụ kiện"}),
+    "sức khỏe": frozenset({"sức khỏe", "suc khoe", "health", "sức khoẻ"}),
+    "khác": frozenset({"khác", "khac", "other"}),
+}
+
+# Canonical names exactly as stored in `services.category` (title-cased).
+CANONICAL_SERVICE_CATEGORIES: frozenset[str] = frozenset(
+    name.title() for name in SERVICE_CATEGORY_REGISTRY
+)
+
+
+def _normalise(text: str) -> str:
+    """Lowercase and collapse whitespace so alias matching is forgiving of case."""
+    return " ".join(text.strip().lower().split())
+
+
+def resolve_service_category(mention: str | None) -> str | None:
+    """Return the canonical ``services.category`` value for *mention*.
+
+    Returns ``None`` when *mention* does not map to a defined category — the
+    caller (the agent) must then ask a clarifying question rather than guessing
+    or falling back to keyword search across unrelated rows.
+    """
+    if not mention:
+        return None
+    norm = _normalise(mention)
+    if not norm:
+        return None
+    # Exact alias hit first.
+    for canonical, aliases in SERVICE_CATEGORY_REGISTRY.items():
+        if norm in aliases or norm == canonical:
+            return canonical.title()
+    return None
+
+
 async def search_services(
     client: AsyncClient,
     *,
@@ -146,23 +202,36 @@ async def search_services(
     """Find active services matching the couple's stated preferences."""
     capped = min(limit or _row_limit(), _row_limit())
 
+    # Only a canonical category name is accepted. The model must obtain it from
+    # `resolve_service_category`; a free-text value like "Vest Cưới" is never a
+    # stored category and would silently return zero rows. Rejecting it here
+    # forces the agent to resolve first instead of guessing.
+    canonical_category: str | None = None
+    if category:
+        canonical_category = resolve_service_category(category)
+        if canonical_category is None:
+            return {
+                "count": 0,
+                "services": [],
+                "error": (
+                    f"'{category}' is not a defined catalog category. "
+                    "Call resolve_service_category first and use the exact "
+                    "category name it returns."
+                ),
+            }
+
     def _build() -> Any:
         q = (
             client.table("services")
             .select(",".join(sorted(SERVICE_PUBLIC_FIELDS)))
             .eq("status", SERVICE_VISIBLE_STATUS)
         )
-        if category:
-            # Case-insensitive: the model routinely emits a lowercased category
-            # ("váy cưới") while the catalog stores title case ("Váy Cưới"), and
-            # a case-sensitive eq() silently returns zero rows — indistinguishable
-            # to the user from "we stock nothing in your budget". `ilike` without
-            # wildcards is still a whole-value match, so this loosens casing only,
-            # not the exactness of the category filter. Escaping `%` and `_` keeps
-            # a model-supplied value from turning into a wildcard pattern.
-            safe_category = category.strip().replace("%", r"\%").replace("_", r"\_")
-            if safe_category:
-                q = q.ilike("category", safe_category)
+        if canonical_category:
+            # `ilike` without wildcards is a case-insensitive whole value match,
+            # so this loosens casing only, not exactness. Escaping `%` and `_`
+            # keeps a model-supplied value from becoming a wildcard.
+            safe_category = canonical_category.replace("%", r"\%").replace("_", r"\_")
+            q = q.ilike("category", safe_category)
         if max_price is not None:
             q = q.lte("base_price", max_price)
         # A floor is ignored whenever a ceiling is present.
@@ -294,6 +363,28 @@ async def list_service_categories(client: AsyncClient) -> dict[str, Any]:
     rows = unwrap(await run_db(_build)) or []
     categories = sorted({r["category"] for r in rows if r.get("category")})
     return {"categories": categories}
+
+
+async def resolve_service_category_tool(
+    client: AsyncClient, *, mention: str
+) -> dict[str, Any]:
+    """Map free-text user wording onto a canonical catalog category.
+
+    The catalog stores a fixed set of category names (e.g. ``Vest``), but users
+    phrase them loosely ("vest cưới", "áo vest"). This tool returns the exact
+    canonical name to pass to ``search_services(category=...)``. When the
+    mention does not map to a defined category, it returns ``found: false`` and
+    the agent must ask a clarifying question — never guess a category or fall
+    back to keyword search across unrelated rows.
+    """
+    canonical = resolve_service_category(mention)
+    if canonical is None:
+        return {
+            "found": False,
+            "mention": mention,
+            "available": sorted(CANONICAL_SERVICE_CATEGORIES),
+        }
+    return {"found": True, "category": canonical, "mention": mention}
 
 
 # --- Wedding-plan and accepted-plan tools -----------------------------------
@@ -476,10 +567,12 @@ TOOL_SPECS: list[dict[str, Any]] = [
                     "category": {
                         "type": "string",
                         "description": (
-                            "Category name from list_service_categories. Matching is "
-                            "case-insensitive but otherwise exact, so the name must "
-                            "correspond to a real category — if none fits, use `query` "
-                            "instead of guessing."
+                            "Exact canonical category name returned by "
+                            "resolve_service_category. NEVER invent or guess a "
+                            "category — call resolve_service_category with the "
+                            "user's wording first and pass back the exact "
+                            "category it returns. A free-text value that is not "
+                            "a defined category is rejected and returns zero rows."
                         ),
                     },
                     "min_price": {
@@ -562,6 +655,32 @@ TOOL_SPECS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
+            "name": "resolve_service_category",
+            "description": (
+                "Map the user's free-text wording onto the exact canonical catalog "
+                "category name. Users phrase categories loosely ('vest cưới', 'áo "
+                "vest', 'chụp ảnh') while the catalog stores a fixed set of names "
+                "('Vest', 'Studio', ...). Call this BEFORE search_services whenever "
+                "the user names a category, then pass the returned category to "
+                "search_services. If it returns found:false, ask the user a "
+                "clarifying question — do not guess a category or search by keyword."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "mention": {
+                        "type": "string",
+                        "description": "The user's wording for the category, verbatim.",
+                    },
+                },
+                "required": ["mention"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "list_wedding_plans",
             "description": (
                 "List active curated wedding packages (gói cưới), price-ascending. "
@@ -633,6 +752,7 @@ _DISPATCH: dict[str, Callable[..., Awaitable[dict[str, Any]]]] = {
     "search_vendors": search_vendors,
     "get_vendor_details": get_vendor_details,
     "list_service_categories": list_service_categories,
+    "resolve_service_category": resolve_service_category_tool,
     "list_wedding_plans": list_wedding_plans,
     "get_wedding_plan": get_wedding_plan,
     "get_user_plan": get_user_plan,

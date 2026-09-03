@@ -406,6 +406,136 @@ class TestBudgetSearchRegression:
         assert "max_price" in description
 
 
+class TestCategoryResolution:
+    """The "vest cưới dưới 10 triệu" regression.
+
+    Live repro: the catalog stores category ``Vest``, but the user (and the
+    model) phrase it as "vest cưới". A whole-value category filter on "Vest
+    Cưới" returns zero rows even though three active Vest services exist under
+    10 triệu. The fix: a canonical category registry maps free-text wording to
+    the exact stored category, and `search_services` only accepts canonical
+    names — the agent must resolve first, never guess or keyword-search across
+    unrelated categories.
+    """
+
+    @pytest.fixture
+    def vest_catalog(self) -> FakeSupabase:
+        return FakeSupabase(
+            rows={
+                "services": [
+                    {
+                        "id": "v1",
+                        "vendor_id": "ven-1",
+                        "name": "Vest Cưới BST22DP6-0",
+                        "category": "Vest",
+                        "base_price": 4500000,
+                        "currency": "VND",
+                        "status": "active",
+                    },
+                    {
+                        "id": "v2",
+                        "vendor_id": "ven-1",
+                        "name": "Áo Vest Xanh Sọc",
+                        "category": "Vest",
+                        "base_price": 5250000,
+                        "currency": "VND",
+                        "status": "active",
+                    },
+                    {
+                        "id": "v3",
+                        "vendor_id": "ven-1",
+                        "name": "Vest Xanh Mint 2 Hàng Khuy",
+                        "category": "Vest",
+                        "base_price": 9000000,
+                        "currency": "VND",
+                        "status": "active",
+                    },
+                    {
+                        "id": "dress",
+                        "vendor_id": "ven-2",
+                        "name": "Áo Dài Cưới Diệu Hỷ",
+                        "category": "Váy Cưới",
+                        "base_price": 6000000,
+                        "currency": "VND",
+                        "status": "active",
+                    },
+                ]
+            }
+        )
+
+    def test_vest_cuoi_resolves_to_canonical_vest(self):
+        assert agent_tools.resolve_service_category("vest cưới") == "Vest"
+        assert agent_tools.resolve_service_category("Vest Cưới") == "Vest"
+        assert agent_tools.resolve_service_category("áo vest") == "Vest"
+        assert agent_tools.resolve_service_category("suit") == "Vest"
+
+    def test_unknown_mention_resolves_to_none(self):
+        assert agent_tools.resolve_service_category("xyz không tồn tại") is None
+        assert agent_tools.resolve_service_category("") is None
+        assert agent_tools.resolve_service_category(None) is None
+
+    @pytest.mark.asyncio
+    async def test_search_services_accepts_canonical_vest(self, vest_catalog):
+        result = await agent_tools.search_services(
+            vest_catalog, category="Vest", max_price=10000000
+        )
+        assert result["count"] == 3
+        names = {s["name"] for s in result["services"]}
+        assert "Vest Cưới BST22DP6-0" in names
+        assert "Áo Vest Xanh Sọc" in names
+        assert "Vest Xanh Mint 2 Hàng Khuy" in names
+        # Never leaks into another category.
+        assert all(s["category"] == "Vest" for s in result["services"])
+
+    @pytest.mark.asyncio
+    async def test_search_services_rejects_unknown_category(self, vest_catalog):
+        """A category that resolves to nothing must be refused, not return 0."""
+        result = await agent_tools.search_services(
+            vest_catalog, category="không tồn tại", max_price=10000000
+        )
+        assert result["count"] == 0
+        assert "error" in result
+        assert "resolve_service_category" in result["error"]
+
+    @pytest.mark.asyncio
+    async def test_search_services_maps_free_text_to_canonical(self, vest_catalog):
+        """'Vest Cưới' resolves to the stored 'Vest' and finds the rows."""
+        result = await agent_tools.search_services(
+            vest_catalog, category="Vest Cưới", max_price=10000000
+        )
+        assert result["count"] == 3
+        assert all(s["category"] == "Vest" for s in result["services"])
+
+    @pytest.mark.asyncio
+    async def test_resolve_tool_returns_canonical(self, vest_catalog):
+        result = await agent_tools.resolve_service_category_tool(
+            vest_catalog, mention="vest cưới"
+        )
+        assert result["found"] is True
+        assert result["category"] == "Vest"
+
+    @pytest.mark.asyncio
+    async def test_resolve_tool_unknown_returns_available(self, vest_catalog):
+        result = await agent_tools.resolve_service_category_tool(
+            vest_catalog, mention="không biết"
+        )
+        assert result["found"] is False
+        assert "Vest" in result["available"]
+
+    def test_resolve_tool_is_registered(self):
+        assert "resolve_service_category" in agent_tools._DISPATCH
+        spec_names = [t["function"]["name"] for t in agent_tools.TOOL_SPECS]
+        assert "resolve_service_category" in spec_names
+
+    def test_search_services_schema_requires_resolution(self):
+        spec = next(
+            t for t in agent_tools.TOOL_SPECS
+            if t["function"]["name"] == "search_services"
+        )
+        description = spec["function"]["parameters"]["properties"]["category"]["description"]
+        assert "resolve_service_category" in description
+
+
 class TestHistorySanitisation:
     def test_system_role_from_client_is_dropped(self, monkeypatch: pytest.MonkeyPatch):
         get_settings.cache_clear()

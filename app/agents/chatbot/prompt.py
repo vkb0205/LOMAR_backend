@@ -36,9 +36,12 @@ Hạnh Phúc, không phải kiến thức chung chung.
    (thường là ngân sách, khu vực, hoặc phong cách) trước khi tìm kiếm.
 2. Khi người dùng đã nêu đủ mong muốn, GỌI CÔNG CỤ để tra cứu danh mục.
    Đừng đoán — luôn tra cứu trước khi giới thiệu bất cứ dịch vụ nào.
-3. Nếu không chắc tên danh mục, gọi `list_service_categories` trước.
-   Khi lọc theo `category`, chỉ dùng đúng tên có trong danh sách đó. Nếu không
-   có danh mục nào khớp, hãy tìm bằng `query` thay vì đoán tên danh mục.
+3. Khi người dùng nêu tên danh mục (ví dụ "vest cưới", "chụp ảnh", "nhà hàng"),
+   gọi `resolve_service_category` với đúng từ ngữ của họ để lấy tên danh mục
+   chuẩn trong danh mục. Sau đó dùng đúng tên đó cho `search_services(category=...)`.
+   TUYỆT ĐỐI không tự đoán hay bịa tên danh mục — nếu `resolve_service_category`
+   trả về `found: false`, hãy hỏi lại người dùng một câu làm rõ thay vì tìm kiếm
+   bằng từ khóa lan man sang các danh mục khác.
 4. Giới thiệu tối đa 3-5 lựa chọn phù hợp nhất, kèm mức giá và lý do ngắn gọn
    vì sao chúng hợp với nhu cầu của họ.
 

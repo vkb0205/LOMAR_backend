@@ -52,6 +52,10 @@ def _openai_client() -> Any:
             "The AI consultant is temporarily unavailable (openai package missing)."
         )
     settings = get_settings()
+    if not settings.openai_api_key:
+        raise UpstreamUnavailableError(
+            "The AI consultant is temporarily unavailable (no text provider key configured)."
+        )
     kwargs: dict[str, Any] = {"api_key": settings.openai_api_key or None}
     if settings.openai_base_url:
         kwargs["base_url"] = settings.openai_base_url
@@ -219,13 +223,31 @@ def _result_row_count(result: dict[str, Any]) -> int | str:
     return "n/a"
 
 
-# Bold/italic emphasis wrappers. The chat surfaces render replies as plain text
-# (`whitespace-pre-wrap`, no markdown parser), so these would otherwise reach the
-# user as literal asterisks: "**Giá**: 3.500.000 VND".
-# Two alternatives, bold before italic, so `**x**` is consumed as one bold span
-# rather than as two italic spans. The inner text may not contain the delimiter
-# character, which stops a match from running past its own closing marker and
-# swallowing a later, unrelated marker.
+# The chat surfaces render replies as plain text (`whitespace-pre-wrap`, no
+# markdown parser), so markup would otherwise reach the user as literal syntax.
+# The system prompt asks for plain text, but formatting instructions are
+# advisory — models drift back to markdown, especially when listing prices and
+# echoing `thumbnail_url` as an image. This is the enforcement half of that rule.
+
+# Markdown image `![alt](url)` and link `[text](url)` forms, matched first
+# (before emphasis) because a nested `*` inside the caption must not be treated
+# as emphasis. The `url` must not itself be a bare opening `)`... handled below.
+_MEDIA_RE = re.compile(
+    r"!\[([^\]]*)\]\(([^)\s]+)\)"
+    r"|\[([^\]]+)\]\(([^)\s]+)\)"
+)
+
+# Bare http(s) URLs the model emitted outside of markdown (e.g. a pasted
+# `thumbnail_url`). The card row already carries the image, so a raw URL in
+# prose is noise for the user.
+_URL_RE = re.compile(r"\s*https?://[^\s<>]+", re.IGNORECASE)
+
+# Bold/italic emphasis wrappers, matched only after media/URL stripping so any
+# `*` that was part of a caption is long gone. Two alternatives, bold before
+# italic, so `**x**` is consumed as one bold span rather than as two italic
+# spans. The inner text may not contain the delimiter character, which stops a
+# match from running past its own closing marker and swallowing a later,
+# unrelated marker.
 _EMPHASIS_RE = re.compile(
     r"\*\*([^*]+)\*\*"
     r"|\*([^*\n]+)\*"
@@ -236,18 +258,31 @@ _EMPHASIS_RE = re.compile(
 
 
 def strip_markdown_emphasis(text: str) -> str:
-    """Remove bold/italic markers the UI cannot render.
+    """Remove markdown the UI cannot render, leaving plain text.
 
-    The system prompt already asks for plain text, but formatting instructions
-    are advisory — models drift back to markdown, especially when listing
-    prices. This is the enforcement half of that rule.
+    Handles the three forms a model most often drifts into when the product
+    card row is unavailable to it:
 
-    Deliberately narrow: only emphasis wrappers are unwrapped. Bullet hyphens,
-    numbered lists and newlines are left intact because they render fine as
-    plain text. The inner text is preserved, never dropped.
+    - images: ``![alt](url)`` -> ``alt``
+    - links: ``[text](url)`` -> ``text``
+    - bold/italic: ``**x**`` / ``*x*`` -> ``x``
+    - bare ``http(s)://`` URLs outside markdown -> removed
+
+    Bullet hyphens, numbered lists and newlines are left intact because they
+    render fine as plain text. Alt/link text is preserved, never dropped, so a
+    caption like ``**Giá**`` survives as ``Giá`` after the image is unwrapped.
     """
-    if not text or ("*" not in text and "_" not in text):
+    if not text:
         return text
+
+    # Collapse `[alt](url)` into its caption text.
+    text = _MEDIA_RE.sub(_media_replacement, text)
+    # Drop any leftover bare URLs the model pasted outside markdown.
+    text = _URL_RE.sub("", text)
+
+    if "*" not in text and "_" not in text:
+        return text
+
     previous = None
     # Nested emphasis (`**_x_**`) needs more than one pass; the loop is bounded
     # by the string shrinking on every iteration.
@@ -257,6 +292,13 @@ def strip_markdown_emphasis(text: str) -> str:
         # None, so join the non-empty one.
         text = _EMPHASIS_RE.sub(lambda m: next(g for g in m.groups() if g is not None), text)
     return text
+
+
+def _media_replacement(match: re.Match[str]) -> str:
+    """Return the caption of a markdown image/link, trimmed of whitespace."""
+    # Group 1 = image alt, Group 3 = link text; the other is None.
+    caption = next((g for g in match.groups() if g is not None), "")
+    return caption.strip()
 
 
 # Fields the product-card row needs. A strict subset of SERVICE_PUBLIC_FIELDS,

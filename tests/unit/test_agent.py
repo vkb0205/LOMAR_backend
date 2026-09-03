@@ -606,6 +606,33 @@ class TestStripMarkdownEmphasis:
     def test_removes_italic_and_nested_emphasis(self):
         assert ai_text.strip_markdown_emphasis("*a* and **_b_**") == "a and b"
 
+    def test_strips_image_markup_into_alt_text(self):
+        """An image URL leaking from a thumbnail must not reach the chat."""
+        raw = (
+            "![Hình ảnh]"
+            "(https://scontent.fcxr1-1.fna.fbcdn.net/v/t39.30808-6/1.jpg?nc_cat=100&ccb=1-7)"
+        )
+        assert ai_text.strip_markdown_emphasis(raw) == "Hình ảnh"
+
+    def test_strips_image_markup_keeping_bold_caption(self):
+        """Alt text may itself contain emphasis that still needs unwrapping."""
+        raw = "1. **Korean Wedding Album**\n   - ![**Giá**: 3.500.000 VND](https://x/y.jpg)"
+        assert ai_text.strip_markdown_emphasis(raw) == (
+            "1. Korean Wedding Album\n   - Giá: 3.500.000 VND"
+        )
+
+    def test_strips_link_markup_into_text(self):
+        assert ai_text.strip_markdown_emphasis("[xem chi tiết](https://x/y)") == "xem chi tiết"
+
+    def test_strips_bare_urls(self):
+        assert ai_text.strip_markdown_emphasis("Xem thêm https://cdn.example.com/a.jpg nhé") == (
+            "Xem thêm  nhé"
+        )
+
+    def test_strips_bare_url_on_its_own_line(self):
+        raw = "- Áo Dài Cưới Diệu Hỷ\n- https://cdn.example.com/1.jpg"
+        assert ai_text.strip_markdown_emphasis(raw) == "- Áo Dài Cưới Diệu Hỷ\n- "
+
     def test_preserves_list_structure_and_newlines(self):
         raw = "- Gói A\n- Gói B"
         assert ai_text.strip_markdown_emphasis(raw) == raw

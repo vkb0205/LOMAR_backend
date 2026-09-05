@@ -60,13 +60,12 @@ class TestCorrelationId:
         response = client.get("/health")
         assert response.headers.get("X-Correlation-Id")
 
-    def test_present_on_unknown_v1_path_rejected_unauthenticated(self, client):
-        """/api/v1/* always requires auth, so an unknown path is rejected by
-        AuthMiddleware (401) before routing would otherwise 404 — the
-        correlation ID must still be present on that early rejection."""
+    def test_present_on_unknown_v1_path_is_404(self, client):
+        """Dependencies protect declared routes; middleware does not turn an
+        unknown route into an authentication oracle."""
         response = client.get("/api/v1/does-not-exist")
         assert response.headers.get("X-Correlation-Id")
-        assert response.status_code == 401
+        assert response.status_code == 404
 
     def test_present_on_404_for_unknown_legacy_path(self, client):
         response = client.get("/does-not-exist")
@@ -77,11 +76,11 @@ class TestCorrelationId:
         response = client.get("/health", headers={"X-Correlation-Id": "abc-123"})
         assert response.headers.get("X-Correlation-Id") == "abc-123"
 
-    def test_client_supplied_id_echoed_on_auth_error(self, client, settings_override):
+    def test_client_supplied_id_echoed_on_retired_route(self, client, settings_override):
         with settings_override({"ENABLE_AUTH": "true"}):
             response = client.get("/consult", headers={"X-Correlation-Id": "xyz-789"})
         assert response.headers.get("X-Correlation-Id") == "xyz-789"
-        assert response.status_code == 401
+        assert response.status_code == 404
 
 
 class TestDbTimeoutMapsTo503:

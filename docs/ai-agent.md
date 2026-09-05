@@ -1,6 +1,7 @@
 # AI Consultant Agent
 
-The `/consult` endpoint runs a tool-calling agent ("Bé Song Hỷ") that answers
+The `/api/v1/chat/consult` endpoint calls the dedicated LOMAR agent service,
+whose tool-calling consultant ("Bé Song Hỷ") answers
 wedding-planning questions using the real Phố Hạnh Phúc catalog instead of the
 model's pretrained guesswork.
 
@@ -8,10 +9,10 @@ model's pretrained guesswork.
 
 | File | Role |
 | --- | --- |
-| [`app/services/agent_prompt.py`](app/services/agent_prompt.py) | Persona, tone and grounding rules |
-| [`app/services/agent_tools.py`](app/services/agent_tools.py) | Catalog tools, JSON schemas, field allowlists, dispatch |
-| [`app/services/ai_text.py`](app/services/ai_text.py) | Provider client, history sanitisation, tool loop |
-| [`app/routers/vton.py`](app/routers/vton.py) | `/consult` request/response contract |
+| [`app/services/agent_service.py`](../app/services/agent_service.py) | Authenticated backend-to-agent transport |
+| [`app/routers/user/chat.py`](../app/routers/user/chat.py) | Public HTTP request/response contract |
+| [`LOMAR_agents/app/agents/consultant`](../../LOMAR_agents/app/agents/consultant) | Persona, session memory, and tool loop |
+| [`LOMAR_agents/app/tools/consultant`](../../LOMAR_agents/app/tools/consultant) | Catalog tools and field allowlists |
 
 ## Available tools
 
@@ -25,7 +26,7 @@ model's pretrained guesswork.
 ## Request
 
 ```jsonc
-POST /consult
+POST /api/v1/chat/consult
 {
   "message": "Mình cần áo dài dưới 5 triệu ở Hà Nội",
   "sessionId": "<server-issued-id>",             // optional after first turn
@@ -163,8 +164,8 @@ These are enforced in code, not by asking the model nicely:
 Session ids are bearer-style secrets: anyone holding one can continue that
 conversation. They are returned in a response body and, in the prototype
 frontend, kept in `sessionStorage`, so the usual token-handling caveats apply
-(no logging, HTTPS only). Since the consultant path is anonymous and stores
-only the visitor's own transcript, the exposure is limited to that transcript.
+(no logging, HTTPS only). The backend route requires an authenticated customer
+and derives `user_id` from the verified JWT.
 
 Memory is process-local: it is lost on restart and not shared across workers,
 so a multi-worker deployment will lose continuity whenever a follow-up request
@@ -179,7 +180,8 @@ moderation on that field if the catalog opens to self-service onboarding.
 
 ## Tests
 
-- [`tests/unit/test_agent.py`](tests/unit/test_agent.py) — redaction, visibility, dispatch safety, history sanitisation, loop bounds
-- [`tests/contract/test_vton.py`](tests/contract/test_vton.py) — `/consult` request/response shape
+- [`tests/unit/test_agent_service_security.py`](../tests/unit/test_agent_service_security.py) — trusted backend transport
+- [`tests/contract/test_chat.py`](../tests/contract/test_chat.py) — `/api/v1/chat/consult` request/response shape
+- [`LOMAR_agents/tests`](../../LOMAR_agents/tests) — agent loop, session, registry, and catalog tools
 
 All provider calls are mocked; the suite runs offline.

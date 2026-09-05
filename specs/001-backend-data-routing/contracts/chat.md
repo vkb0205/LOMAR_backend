@@ -18,7 +18,7 @@ Returns prior messages in original order (`created_at ASC, id ASC`).
 ## `POST /api/v1/chat/threads`
 
 Creates or resolves a thread for the given context (consultant vs.
-customization; optional `vendorId`/`serviceId`/`designProjectId`), mirroring
+customization; optional `vendorId`/`serviceId`), mirroring
 `chat_threads.context_type` usage today.
 
 **Response 201**: `{ "threadId": "uuid" }`

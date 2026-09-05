@@ -31,13 +31,11 @@ async def build_feed(client: Any, user_id: str = "") -> list[FeedPost]:
     profiles = await repository.profiles_by_ids(client, [row["user_id"] for row in posts if row.get("user_id")])
     likes = await repository.count_rows_by_post(client, "post_likes", post_ids)
     comments = await repository.count_rows_by_post(client, "post_comments", post_ids)
-    tag_ids_by_post, tags_by_id = await repository.tag_data(client, post_ids)
     liked = await repository.liked_post_ids(client, user_id, post_ids)
 
     feed: list[FeedPost] = []
     for post in posts:
         profile = profiles.get(post.get("user_id"), {})
-        tag_names = [tags_by_id[tag_id] for tag_id in tag_ids_by_post.get(post["id"], []) if tag_id in tags_by_id]
         feed.append(
             FeedPost(
                 id=post["id"],
@@ -45,7 +43,6 @@ async def build_feed(client: Any, user_id: str = "") -> list[FeedPost]:
                 name=profile.get("username") or "Anonymous",
                 time=format_post_time(post.get("created_at")),
                 content=post.get("content") or "",
-                tags=" ".join(f"#{name}" for name in tag_names),
                 likes=likes.get(post["id"], 0),
                 comments=comments.get(post["id"], 0),
                 shares=0,

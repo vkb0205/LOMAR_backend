@@ -194,3 +194,8 @@ Rollback is domain-atomic, not request-by-request:
 
 Authentication remains direct to Supabase throughout rollback; only
 application-data routes are toggled.
+# Schema status
+
+The active verification surface excludes tags, follows, reviews, service
+images, and AI-design data. See `data-model.md` and `contracts/` for current
+responses.

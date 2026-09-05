@@ -22,7 +22,7 @@ uvicorn app.main:app --host "${API_HOST:-0.0.0.0}" --port "${API_PORT:-8080}"
 | `API_HOST` | no | `0.0.0.0` | Bind address |
 | `API_PORT` | no | `8080` | HTTP port |
 | `ALLOWED_ORIGINS` | no | `http://localhost:3000` | Comma-separated CORS allowlist; `*` forbidden |
-| `ENABLE_AUTH` | no | `false` | Gates legacy AI routes only; `/api/v1/me/*` and `/api/v1/admin/*` always require auth |
+| `ENABLE_AUTH` | no | `false` | Controls API documentation exposure; route security is dependency-based |
 | `SUPABASE_URL` | data routes | empty | Existing Supabase project URL |
 | `SUPABASE_ANON_KEY` | data routes | empty | Caller-JWT/anon PostgREST key |
 | `SUPABASE_SERVICE_ROLE_KEY` | admin analytics | empty | Secret Manager only; never commit or pass as public env config |
@@ -45,15 +45,17 @@ uvicorn app.main:app --host "${API_HOST:-0.0.0.0}" --port "${API_PORT:-8080}"
 Every response carries `X-Correlation-Id`. Supabase/provider failures use the
 sanitized envelope `{ "error": { "code": "...", "message": "..." } }`.
 
-### Liveness and legacy AI
+### Router groups
 
-| Method | Path | Auth | Body / response |
-|---|---|---|---|
-| GET | `/health` | none | Existing health shape |
-| GET | `/proxy-image?url=<encoded>` | `ENABLE_AUTH` | Validated image proxy |
-| POST | `/test-try-on` | `ENABLE_AUTH` | JSON image URL request; image URL response |
-| POST | `/test-try-on-upload` | `ENABLE_AUTH` | Multipart `body_image`, `garment_image`, `category`, `prompt` |
-| POST | `/consult` | `ENABLE_AUTH` | `{ "message": "..." }` → `{ "reply": "..." }` |
+| Group | Policy | Included domains |
+|---|---|---|
+| Public | No JWT required | Health, catalog, public social reads, analytics |
+| Customer | Exact `profiles.role = customer` | Profile, dashboard, chat |
+| Vendor | Exact `profiles.role = vendor` | Owned services, requests, vouchers |
+| Admin | Exact `profiles.role = admin` | Platform administration |
+
+`/health` remains dependency-free. Legacy VTON routes (`/proxy-image`,
+`/test-try-on*`, and `/consult`) are retired and are not mounted.
 
 ### Catalog (public)
 
@@ -61,7 +63,7 @@ sanitized envelope `{ "error": { "code": "...", "message": "..." } }`.
 |---|---|---|
 | GET | `/api/v1/catalog/vendors` | `{ "vendors": [...] }` |
 | GET | `/api/v1/catalog/vendors/{vendorId}` | `{ "vendor": {...}, "services": [...] }` |
-| GET | `/api/v1/catalog/customize` | `{ "services": [...], "serviceImages": [...], "vendors": [...] }` |
+| GET | `/api/v1/catalog/customize` | `{ "services": [...], "vendors": [...] }` |
 | GET | `/api/v1/catalog/services/{serviceId}/suggestion` | `{ "service": {...} }` |
 
 Only catalog-visible `active` vendor/service rows are public.
@@ -70,7 +72,7 @@ Only catalog-visible `active` vendor/service rows are public.
 
 | Method | Path | Body / response |
 |---|---|---|
-| GET | `/api/v1/me/dashboard` | Dashboard aggregate: tasks, vouchers, saved designs |
+| GET | `/api/v1/me/dashboard` | Dashboard aggregate: tasks and vouchers |
 | PUT | `/api/v1/me/journey-tasks/{taskId}` | `{ "status": "pending" | "completed" }` → `{ "ok": true }` |
 | PUT | `/api/v1/me/vouchers/{voucherId}` | `{ "status": "locked" | "unlocked" }` → `{ "ok": true }` |
 
@@ -87,8 +89,6 @@ constraints and server-owned timestamps.
 | POST/DELETE | `/api/v1/posts/{postId}/likes` |
 | POST | `/api/v1/posts/{postId}/comments` |
 | PUT/DELETE | `/api/v1/comments/{commentId}` |
-| POST | `/api/v1/follows` |
-| DELETE | `/api/v1/follows/{followeeType}/{followeeId}` |
 
 Non-owner post/comment mutation is masked as `404`.
 
@@ -116,7 +116,7 @@ lookup. Public tracking keeps anonymous behavior:
 Admin aggregate: `GET /api/v1/admin/analytics?days=1..365`.
 
 Admin lists/mutations cover profiles, vendors, services, posts, comments,
-reviews, journey tasks, vouchers, service requests, and generations. Admin
+journey tasks, vouchers, and service requests. Admin
 cross-user calls use the service-role repository only after `require_admin`.
 
 ## Tests

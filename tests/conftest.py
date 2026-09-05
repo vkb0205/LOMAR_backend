@@ -13,13 +13,11 @@ with configurable ``sub`` and ``role`` claims.
 
 from __future__ import annotations
 
-import asyncio
 import os
 import sys
 import time
-import uuid
-from typing import AsyncGenerator, Generator
-from unittest.mock import AsyncMock, MagicMock, patch
+from typing import Generator
+from unittest.mock import AsyncMock, MagicMock
 
 import jwt
 import pytest
@@ -34,7 +32,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from app.config import Settings, get_settings
+from app.config import get_settings
 from app.main import create_app
 from tests.fakes import FakeSupabase
 
@@ -46,6 +44,7 @@ TEST_SECRET = "test-supabase-jwt-secret"
 TEST_AUDIENCE = "authenticated"
 TEST_USER_ID = "11111111-1111-1111-1111-111111111111"
 TEST_USER_B_ID = "33333333-3333-3333-3333-333333333333"
+TEST_BUSINESS_ID = "44444444-4444-4444-4444-444444444444"
 TEST_ADMIN_ID = "22222222-2222-2222-2222-222222222222"
 
 
@@ -77,20 +76,6 @@ def _isolate_env(monkeypatch: pytest.MonkeyPatch) -> Generator[None, None, None]
     get_settings.cache_clear()
 
 
-@pytest.fixture(autouse=True)
-def _isolate_session_store() -> Generator[None, None, None]:
-    """Reset the process-wide consultant session memory between tests.
-
-    The store is a module-level singleton (like ``get_settings``), so without
-    this a session minted by one test would remain visible to the next.
-    """
-    from app.services.session_store import get_session_store
-
-    get_session_store().clear_all()
-    yield
-    get_session_store().clear_all()
-
-
 # ---------------------------------------------------------------------------
 # Test app
 # ---------------------------------------------------------------------------
@@ -104,6 +89,7 @@ def app() -> FastAPI:
             "profiles": [
                 {"id": TEST_USER_ID, "role": "customer"},
                 {"id": TEST_USER_B_ID, "role": "customer"},
+                {"id": TEST_BUSINESS_ID, "role": "vendor"},
                 {"id": TEST_ADMIN_ID, "role": "admin"},
             ]
         }
@@ -211,6 +197,11 @@ def user_token() -> str:
 @pytest.fixture()
 def admin_token() -> str:
     return factory_token(TEST_ADMIN_ID, role="admin")
+
+
+@pytest.fixture()
+def business_token() -> str:
+    return factory_token(TEST_BUSINESS_ID, role="vendor")
 
 
 @pytest.fixture()

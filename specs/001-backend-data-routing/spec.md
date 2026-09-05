@@ -347,3 +347,9 @@ by a non-administrator session are refused by the backend.
 - "Administrator" continues to mean the same role/flag on a user's profile
   that today's admin route guard checks; this feature does not introduce a
   new permission model, only backend-side enforcement of the existing one.
+# Schema status
+
+The active persistence contract is defined in `data-model.md`. References in
+this historical requirements document to tags, follows, reviews, service
+images, or AI-design tables were superseded by the 2026-09-05 schema
+simplification.

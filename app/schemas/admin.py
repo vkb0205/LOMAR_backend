@@ -5,12 +5,18 @@ from __future__ import annotations
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 
 class AccountRole(str, Enum):
     customer = "customer"
-    vendor_admin = "vendor_admin"
+    vendor = "vendor"
+    admin = "admin"
+
+
+class ApplicationRole(str, Enum):
+    customer = "customer"
+    vendor = "vendor"
     admin = "admin"
 
 
@@ -38,12 +44,6 @@ class CommentStatus(str, Enum):
     flagged = "flagged"
 
 
-class ReviewStatus(str, Enum):
-    published = "published"
-    hidden = "hidden"
-    flagged = "flagged"
-
-
 class ServiceRequestStatus(str, Enum):
     new = "new"
     contacted = "contacted"
@@ -66,15 +66,16 @@ class PlatformMetrics(BaseModel):
     posts: int
     postsHidden: int
     commentsFlagged: int
-    reviewsFlagged: int
     leads: int
     leadsNew: int
-    generations: int
-    generationsFailed: int
 
 
 class RoleUpdate(BaseModel):
     role: AccountRole
+
+
+class ApplicationRoleUpdate(BaseModel):
+    role: ApplicationRole
 
 
 class VendorStatusUpdate(BaseModel):
@@ -91,10 +92,6 @@ class PostStatusUpdate(BaseModel):
 
 class CommentStatusUpdate(BaseModel):
     status: CommentStatus
-
-
-class ReviewStatusUpdate(BaseModel):
-    status: ReviewStatus
 
 
 class ServiceRequestStatusUpdate(BaseModel):
@@ -175,6 +172,12 @@ class AnalyticsSummary(BaseModel):
     sessions: int
     avgDurationSeconds: int
     bounceRate: float
+
+
+class ProfileNameRequest(BaseModel):
+    """Batch request for resolving display names of user IDs."""
+
+    user_ids: list[str] = Field(default_factory=list)
 
 
 class WebsiteAnalytics(BaseModel):

@@ -419,3 +419,9 @@ server-side.
 | FR-011 | T028, T036, T045, T054, T065 (per-slice atomic cut-over) |
 | FR-012 | T013, T014, T050 |
 | SC-005 | T004, T007, T011, T018, T067 |
+# Schema status
+
+Completed task descriptions are retained as implementation history. Tasks
+that mention tags, follows, reviews, service images, saved designs, or
+AI-design generations no longer describe the active schema; see
+`data-model.md` and `contracts/`.

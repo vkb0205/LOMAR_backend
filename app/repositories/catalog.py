@@ -61,11 +61,6 @@ async def list_services(client: AsyncClient) -> list[dict[str, Any]]:
     return unwrap(result) or []
 
 
-async def list_service_images(client: AsyncClient) -> list[dict[str, Any]]:
-    result = await run_db(lambda: client.table("service_images").select("*").execute())
-    return unwrap(result) or []
-
-
 async def list_all_vendors_for_customize(client: AsyncClient) -> list[dict[str, Any]]:
     """Vendors referenced by the customize catalog.
 

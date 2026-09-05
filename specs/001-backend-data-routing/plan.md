@@ -241,3 +241,8 @@ To be completed after `/speckit.tasks`, before implementation. Confirm:
       Manager, never `--set-env-vars` (IV)
 - [ ] Every endpoint has a timeout and a mapped failure status (V)
 - [ ] Every endpoint has a contract test including an authorization negative (VI)
+# Schema status
+
+This plan is retained as delivery history. The active schema and API contracts
+are documented in `data-model.md` and `contracts/`; retired follows, reviews,
+service-image, tag, and AI-design features are no longer implemented.

@@ -111,8 +111,8 @@ and gives the frontend nothing structured to render.
 
 ## R6 — Admin authorization source and "not found" masking
 
-**Finding**: `profiles.role` already carries `'customer' | 'vendor_admin' |
-'admin'` (see `AccountRole` in `adminService.ts`). The spec's edge cases
+**Finding**: `profiles.role` carries the canonical
+`'customer' | 'vendor' | 'admin'` vocabulary. The spec's edge cases
 require that guessing another user's private-record ID returns the same
 outcome a legitimate absence would (no "forbidden, but it exists" signal).
 
@@ -167,3 +167,8 @@ upsert already gives last-write-wins atomically.
 **Rationale**: Preserve a successful, user-visible AI response while making history durability explicit; the frontend can warn or retry without treating a generated reply as lost.
 
 **Alternatives considered**: All-or-nothing failure was rejected because it discards a successful AI response and gives users no useful result.
+# Schema status
+
+This research record predates the 2026-09-05 schema simplification. The active
+table and transport decisions are documented in `data-model.md`; removed-table
+references below are historical context only.

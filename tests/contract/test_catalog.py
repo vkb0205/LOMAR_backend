@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import httpx
 
-from tests.conftest import TEST_USER_ID
 from tests.fakes import FakeSupabase
 
 
@@ -36,9 +35,6 @@ def _catalog_store() -> dict[str, list[dict]]:
                 "thumbnail_url": "https://img/service.jpg",
             },
             {"id": "draft-service", "vendor_id": VENDOR_ID, "status": "draft"},
-        ],
-        "service_images": [
-            {"id": "image-1", "service_id": SERVICE_ID, "image_url": "https://img/1.jpg"}
         ],
     }
 
@@ -76,6 +72,7 @@ def test_vendor_detail_and_customization_filter_hidden_rows(client, app):
     assert customize.status_code == 200
     assert [row["id"] for row in customize.json()["services"]] == [SERVICE_ID]
     assert customize.json()["vendors"][0]["id"] == VENDOR_ID
+    assert "serviceImages" not in customize.json()
 
 
 def test_unknown_vendor_and_service_are_not_found(client, app):

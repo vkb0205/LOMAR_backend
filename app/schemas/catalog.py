@@ -29,7 +29,6 @@ class CustomizeCatalog(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     services: list[dict[str, Any]]
-    serviceImages: list[dict[str, Any]]
     vendors: list[dict[str, Any]]
 
 

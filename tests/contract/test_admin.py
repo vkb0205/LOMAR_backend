@@ -16,9 +16,7 @@ def _store():
         "services": [],
         "posts": [],
         "post_comments": [],
-        "reviews": [],
         "service_requests": [],
-        "ai_design_generations": [],
         "journey_tasks": [],
         "vouchers": [],
         "analytics_page_views": [],
@@ -61,11 +59,9 @@ def test_every_admin_route_rejects_anonymous_and_non_admin(client, app):
         "/api/v1/admin/services",
         "/api/v1/admin/posts",
         "/api/v1/admin/comments",
-        "/api/v1/admin/reviews",
         "/api/v1/admin/journey-tasks",
         "/api/v1/admin/vouchers",
         "/api/v1/admin/service-requests",
-        "/api/v1/admin/generations",
         "/api/v1/admin/analytics",
     ):
         assert client.get(path).status_code == 401
@@ -84,6 +80,18 @@ def test_admin_reads_and_mutations_succeed(client, app):
         headers=_auth(TEST_ADMIN_ID),
     )
     assert status_response.status_code == 200
+
+
+def test_admin_sets_canonical_profile_role(client, app):
+    fake = _install(app)
+    response = client.put(
+        f"/api/v1/admin/users/{TEST_USER_ID}/role",
+        json={"role": "vendor"},
+        headers=_auth(TEST_ADMIN_ID),
+    )
+    assert response.status_code == 200
+    profile = next(row for row in fake.rows["profiles"] if row["id"] == TEST_USER_ID)
+    assert profile["role"] == "vendor"
 
 
 def test_admin_validation_and_days_bounds(client, app):

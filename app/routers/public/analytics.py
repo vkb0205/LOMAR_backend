@@ -6,18 +6,21 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Path
 
-from app.deps.auth import AuthenticatedUser, current_user
+from app.auth.dependencies import get_optional_user
 from app.deps.db import get_supabase
 from app.repositories import analytics as repository
 from app.schemas.admin import PageEngagementCreate, PageViewCreate
 
-router = APIRouter(prefix="/analytics", tags=["analytics"])
+router = APIRouter(
+    prefix="/analytics",
+    tags=["analytics"],
+    dependencies=[Depends(get_optional_user)],
+)
 
 
 @router.post("/page-views")
 async def record_view(
     body: PageViewCreate,
-    user: Annotated[AuthenticatedUser, Depends(current_user)],
     client=Depends(get_supabase),
 ) -> dict[str, bool]:
     # RPC signature stays unchanged; user identity comes from auth.uid() inside
@@ -40,7 +43,6 @@ async def record_view(
 async def record_engagement(
     view_id: Annotated[str, Path(alias="viewId", min_length=1)],
     body: PageEngagementCreate,
-    user: Annotated[AuthenticatedUser, Depends(current_user)],
     client=Depends(get_supabase),
 ) -> dict[str, bool]:
     await repository.record_page_engagement(

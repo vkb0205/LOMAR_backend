@@ -19,7 +19,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, Awaitable, Callable, TypeVar
+from collections.abc import Awaitable, Callable
+from typing import Any, TypeVar
 
 import httpx
 from fastapi import Request
@@ -71,7 +72,6 @@ async def run_db(operation: Callable[[], Awaitable[T]]) -> T:
     except _UNAVAILABLE_ERRORS as exc:
         logger.warning("supabase_unavailable error=%s", type(exc).__name__)
         raise DatabaseUnavailableError(internal_detail=str(exc)) from exc
-
 
 async def get_supabase(request: Request) -> AsyncClient:
     """Return the caller-JWT-scoped client for this request.
@@ -129,5 +129,6 @@ async def get_supabase_admin(request: Request) -> AsyncClient:
 
 
 def unwrap(result: Any) -> Any:
-    """Return ``result.data`` from a PostgREST response."""
-    return getattr(result, "data", None)
+    """Return response data, or the original value for test adapters."""
+    return getattr(result, "data", result)
+

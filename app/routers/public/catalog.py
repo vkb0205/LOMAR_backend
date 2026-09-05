@@ -46,9 +46,8 @@ async def vendor_detail(
 @router.get("/customize", response_model=CustomizeCatalog)
 async def customize_catalog(client=Depends(get_supabase)) -> CustomizeCatalog:
     services = await repository.list_services(client)
-    images = await repository.list_service_images(client)
     vendors = await repository.list_all_vendors_for_customize(client)
-    return CustomizeCatalog(services=services, serviceImages=images, vendors=vendors)
+    return CustomizeCatalog(services=services, vendors=vendors)
 
 
 @router.get("/services/{serviceId}/suggestion", response_model=ServiceSuggestion)

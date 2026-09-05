@@ -13,6 +13,10 @@ VOUCHER_ID = "20000000-0000-0000-0000-000000000002"
 
 def _store() -> dict[str, list[dict]]:
     return {
+        "profiles": [
+            {"id": TEST_USER_ID, "role": "customer"},
+            {"id": TEST_USER_B_ID, "role": "customer"},
+        ],
         "journey_tasks": [
             {"id": TASK_ID, "name": "Chốt ngân sách", "is_mandatory": True, "active": True}
         ],
@@ -31,24 +35,6 @@ def _store() -> dict[str, list[dict]]:
         ],
         "user_vouchers": [
             {"user_id": TEST_USER_B_ID, "voucher_id": VOUCHER_ID, "status": "unlocked"}
-        ],
-        "ai_design_projects": [
-            {
-                "id": "design-a",
-                "user_id": TEST_USER_ID,
-                "title": "Áo dài",
-                "category": "Váy Cưới",
-                "status": "draft",
-                "created_at": "2026-08-01T00:00:00+00:00",
-            },
-            {
-                "id": "design-b",
-                "user_id": TEST_USER_B_ID,
-                "title": "User B design",
-                "category": "Váy Cưới",
-                "status": "draft",
-                "created_at": "2026-08-02T00:00:00+00:00",
-            },
         ],
     }
 
@@ -80,7 +66,7 @@ def test_dashboard_returns_only_callers_rows(client, app):
             "requiredTaskId": TASK_ID,
         }
     ]
-    assert [design["id"] for design in body["savedDesigns"]] == ["design-a"]
+    assert "savedDesigns" not in body
 
 
 def test_user_b_cannot_see_user_a_rows(client, app):
@@ -88,7 +74,7 @@ def test_user_b_cannot_see_user_a_rows(client, app):
     body = client.get("/api/v1/me/dashboard", headers=_auth(TEST_USER_B_ID)).json()
     assert body["tasks"][0]["status"] == "pending"
     assert body["vouchers"][0]["status"] == "unlocked"
-    assert [design["id"] for design in body["savedDesigns"]] == ["design-b"]
+    assert "savedDesigns" not in body
 
 
 def test_anonymous_and_expired_tokens_are_401(client, app, expired_token):

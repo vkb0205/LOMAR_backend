@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any
-
 from pydantic import BaseModel
 
 
@@ -36,7 +34,6 @@ class DashboardVoucher(BaseModel):
 class DashboardData(BaseModel):
     tasks: list[DashboardTask]
     vouchers: list[DashboardVoucher]
-    savedDesigns: list[dict[str, Any]]
 
 
 class TaskStatusUpdate(BaseModel):

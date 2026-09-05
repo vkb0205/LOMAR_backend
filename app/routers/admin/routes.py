@@ -1,4 +1,8 @@
-"""Admin routes — every endpoint gated by `require_admin` (FR-005, SC-003)."""
+"""Admin routes — every endpoint gated by `require_admin` (FR-005, SC-003).
+
+Authorization is enforced once at the router level through the centralized
+JWT, profile-role, and exact-admin dependency chain.
+"""
 
 from __future__ import annotations
 
@@ -6,18 +10,19 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Path, Query
 
-from app.deps.auth import AuthenticatedUser, require_admin
-from app.deps.db import get_supabase, get_supabase_admin
+from app.auth.permissions import require_admin
+from app.deps.db import get_supabase_admin
 from app.errors import NotFoundError
 from app.repositories import admin as repository
 from app.repositories import analytics as analytics_repository
 from app.schemas.admin import (
+    ApplicationRoleUpdate,
     CommentStatusUpdate,
     JourneyTaskUpdate,
     JourneyTaskWrite,
     PlatformMetrics,
     PostStatusUpdate,
-    ReviewStatusUpdate,
+    ProfileNameRequest,
     RoleUpdate,
     ServiceRequestStatusUpdate,
     ServiceStatusUpdate,
@@ -27,19 +32,20 @@ from app.schemas.admin import (
     WebsiteAnalytics,
 )
 
-router = APIRouter(prefix="/admin", tags=["admin"])
-
-AdminUser = Annotated[AuthenticatedUser, Depends(require_admin)]
+router = APIRouter(
+    prefix="/admin",
+    tags=["admin"],
+    dependencies=[Depends(require_admin)],
+)
 
 
 @router.get("/metrics", response_model=PlatformMetrics)
-async def metrics(_: AdminUser, client=Depends(get_supabase_admin)) -> PlatformMetrics:
+async def metrics(client=Depends(get_supabase_admin)) -> PlatformMetrics:
     return PlatformMetrics(**await repository.fetch_platform_metrics(client))
 
 
 @router.get("/profiles")
 async def profiles(
-    _: AdminUser,
     search: Annotated[str | None, Query()] = None,
     client=Depends(get_supabase_admin),
 ) -> list[dict]:
@@ -50,12 +56,28 @@ async def profiles(
 async def set_profile_role(
     row_id: Annotated[str, Path(alias="id", min_length=1)],
     body: RoleUpdate,
-    _: AdminUser,
     client=Depends(get_supabase_admin),
 ) -> dict[str, bool]:
     if await repository.get_row(client, "profiles", row_id) is None:
         raise NotFoundError()
-    await repository.update_row(client, "profiles", row_id, {"role": body.role.value})
+    await repository.update_row(
+        client, "profiles", row_id, {"role": body.role.value}
+    )
+    return {"ok": True}
+
+
+@router.put("/users/{id}/role")
+async def set_application_role(
+    row_id: Annotated[str, Path(alias="id", min_length=1)],
+    body: ApplicationRoleUpdate,
+    client=Depends(get_supabase_admin),
+) -> dict[str, bool]:
+    """Privileged, validated transition of the authoritative application role."""
+    if await repository.get_row(client, "profiles", row_id) is None:
+        raise NotFoundError()
+    await repository.update_row(
+        client, "profiles", row_id, {"role": body.role.value}
+    )
     return {"ok": True}
 
 
@@ -69,14 +91,13 @@ async def _delete(client, table: str, row_id: str) -> dict[str, bool]:
 @router.delete("/profiles/{id}")
 async def delete_profile(
     row_id: Annotated[str, Path(alias="id", min_length=1)],
-    _: AdminUser,
     client=Depends(get_supabase_admin),
 ) -> dict[str, bool]:
     return await _delete(client, "profiles", row_id)
 
 
 @router.get("/vendors")
-async def vendors(_: AdminUser, client=Depends(get_supabase_admin)) -> list[dict]:
+async def vendors(client=Depends(get_supabase_admin)) -> list[dict]:
     return await repository._list(client, "vendors", order="created_at")
 
 
@@ -84,7 +105,6 @@ async def vendors(_: AdminUser, client=Depends(get_supabase_admin)) -> list[dict
 async def set_vendor_status(
     row_id: Annotated[str, Path(alias="id", min_length=1)],
     body: VendorStatusUpdate,
-    _: AdminUser,
     client=Depends(get_supabase_admin),
 ) -> dict[str, bool]:
     if await repository.get_row(client, "vendors", row_id) is None:
@@ -96,14 +116,13 @@ async def set_vendor_status(
 @router.delete("/vendors/{id}")
 async def delete_vendor(
     row_id: Annotated[str, Path(alias="id", min_length=1)],
-    _: AdminUser,
     client=Depends(get_supabase_admin),
 ) -> dict[str, bool]:
     return await _delete(client, "vendors", row_id)
 
 
 @router.get("/services")
-async def services(_: AdminUser, client=Depends(get_supabase_admin)) -> list[dict]:
+async def services(client=Depends(get_supabase_admin)) -> list[dict]:
     return await repository._list(client, "services", order="created_at")
 
 
@@ -111,7 +130,6 @@ async def services(_: AdminUser, client=Depends(get_supabase_admin)) -> list[dic
 async def set_service_status(
     row_id: Annotated[str, Path(alias="id", min_length=1)],
     body: ServiceStatusUpdate,
-    _: AdminUser,
     client=Depends(get_supabase_admin),
 ) -> dict[str, bool]:
     if await repository.get_row(client, "services", row_id) is None:
@@ -123,14 +141,13 @@ async def set_service_status(
 @router.delete("/services/{id}")
 async def delete_service(
     row_id: Annotated[str, Path(alias="id", min_length=1)],
-    _: AdminUser,
     client=Depends(get_supabase_admin),
 ) -> dict[str, bool]:
     return await _delete(client, "services", row_id)
 
 
 @router.get("/posts")
-async def posts(_: AdminUser, client=Depends(get_supabase_admin)) -> list[dict]:
+async def posts(client=Depends(get_supabase_admin)) -> list[dict]:
     return await repository._list(client, "posts", order="created_at")
 
 
@@ -138,7 +155,6 @@ async def posts(_: AdminUser, client=Depends(get_supabase_admin)) -> list[dict]:
 async def set_post_status(
     row_id: Annotated[str, Path(alias="id", min_length=1)],
     body: PostStatusUpdate,
-    _: AdminUser,
     client=Depends(get_supabase_admin),
 ) -> dict[str, bool]:
     if await repository.get_row(client, "posts", row_id) is None:
@@ -150,14 +166,13 @@ async def set_post_status(
 @router.delete("/posts/{id}")
 async def delete_post(
     row_id: Annotated[str, Path(alias="id", min_length=1)],
-    _: AdminUser,
     client=Depends(get_supabase_admin),
 ) -> dict[str, bool]:
     return await _delete(client, "posts", row_id)
 
 
 @router.get("/comments")
-async def comments(_: AdminUser, client=Depends(get_supabase_admin)) -> list[dict]:
+async def comments(client=Depends(get_supabase_admin)) -> list[dict]:
     return await repository._list(client, "post_comments", order="created_at")
 
 
@@ -165,7 +180,6 @@ async def comments(_: AdminUser, client=Depends(get_supabase_admin)) -> list[dic
 async def set_comment_status(
     row_id: Annotated[str, Path(alias="id", min_length=1)],
     body: CommentStatusUpdate,
-    _: AdminUser,
     client=Depends(get_supabase_admin),
 ) -> dict[str, bool]:
     if await repository.get_row(client, "post_comments", row_id) is None:
@@ -177,47 +191,19 @@ async def set_comment_status(
 @router.delete("/comments/{id}")
 async def delete_comment(
     row_id: Annotated[str, Path(alias="id", min_length=1)],
-    _: AdminUser,
     client=Depends(get_supabase_admin),
 ) -> dict[str, bool]:
     return await _delete(client, "post_comments", row_id)
 
 
-@router.get("/reviews")
-async def reviews(_: AdminUser, client=Depends(get_supabase_admin)) -> list[dict]:
-    return await repository._list(client, "reviews", order="created_at")
-
-
-@router.put("/reviews/{id}/status")
-async def set_review_status(
-    row_id: Annotated[str, Path(alias="id", min_length=1)],
-    body: ReviewStatusUpdate,
-    _: AdminUser,
-    client=Depends(get_supabase_admin),
-) -> dict[str, bool]:
-    if await repository.get_row(client, "reviews", row_id) is None:
-        raise NotFoundError()
-    await repository.update_row(client, "reviews", row_id, {"status": body.status.value})
-    return {"ok": True}
-
-
-@router.delete("/reviews/{id}")
-async def delete_review(
-    row_id: Annotated[str, Path(alias="id", min_length=1)],
-    _: AdminUser,
-    client=Depends(get_supabase_admin),
-) -> dict[str, bool]:
-    return await _delete(client, "reviews", row_id)
-
-
 @router.get("/journey-tasks")
-async def journey_tasks(_: AdminUser, client=Depends(get_supabase_admin)) -> list[dict]:
+async def journey_tasks(client=Depends(get_supabase_admin)) -> list[dict]:
     return await repository._list(client, "journey_tasks", order="display_order", desc=False)
 
 
 @router.post("/journey-tasks")
 async def create_journey_task(
-    body: JourneyTaskWrite, _: AdminUser, client=Depends(get_supabase_admin)
+    body: JourneyTaskWrite, client=Depends(get_supabase_admin)
 ) -> dict:
     return await repository.insert_row(client, "journey_tasks", body.model_dump())
 
@@ -226,7 +212,6 @@ async def create_journey_task(
 async def update_journey_task(
     row_id: Annotated[str, Path(alias="id", min_length=1)],
     body: JourneyTaskUpdate,
-    _: AdminUser,
     client=Depends(get_supabase_admin),
 ) -> dict[str, bool]:
     if await repository.get_row(client, "journey_tasks", row_id) is None:
@@ -238,20 +223,19 @@ async def update_journey_task(
 @router.delete("/journey-tasks/{id}")
 async def delete_journey_task(
     row_id: Annotated[str, Path(alias="id", min_length=1)],
-    _: AdminUser,
     client=Depends(get_supabase_admin),
 ) -> dict[str, bool]:
     return await _delete(client, "journey_tasks", row_id)
 
 
 @router.get("/vouchers")
-async def vouchers(_: AdminUser, client=Depends(get_supabase_admin)) -> list[dict]:
+async def vouchers(client=Depends(get_supabase_admin)) -> list[dict]:
     return await repository._list(client, "vouchers", order="created_at")
 
 
 @router.post("/vouchers")
 async def create_voucher(
-    body: VoucherWrite, _: AdminUser, client=Depends(get_supabase_admin)
+    body: VoucherWrite, client=Depends(get_supabase_admin)
 ) -> dict:
     payload = body.model_dump()
     payload["discount_type"] = body.discount_type.value
@@ -262,7 +246,6 @@ async def create_voucher(
 async def update_voucher(
     row_id: Annotated[str, Path(alias="id", min_length=1)],
     body: VoucherPartialWrite,
-    _: AdminUser,
     client=Depends(get_supabase_admin),
 ) -> dict[str, bool]:
     if await repository.get_row(client, "vouchers", row_id) is None:
@@ -277,14 +260,13 @@ async def update_voucher(
 @router.delete("/vouchers/{id}")
 async def delete_voucher(
     row_id: Annotated[str, Path(alias="id", min_length=1)],
-    _: AdminUser,
     client=Depends(get_supabase_admin),
 ) -> dict[str, bool]:
     return await _delete(client, "vouchers", row_id)
 
 
 @router.get("/service-requests")
-async def service_requests(_: AdminUser, client=Depends(get_supabase_admin)) -> list[dict]:
+async def service_requests(client=Depends(get_supabase_admin)) -> list[dict]:
     return await repository._list(client, "service_requests", order="created_at")
 
 
@@ -292,7 +274,6 @@ async def service_requests(_: AdminUser, client=Depends(get_supabase_admin)) -> 
 async def set_service_request_status(
     row_id: Annotated[str, Path(alias="id", min_length=1)],
     body: ServiceRequestStatusUpdate,
-    _: AdminUser,
     client=Depends(get_supabase_admin),
 ) -> dict[str, bool]:
     if await repository.get_row(client, "service_requests", row_id) is None:
@@ -301,14 +282,17 @@ async def set_service_request_status(
     return {"ok": True}
 
 
-@router.get("/generations")
-async def generations(_: AdminUser, client=Depends(get_supabase_admin)) -> list[dict]:
-    return await repository._list(client, "ai_design_generations", order="created_at", limit=200)
+@router.post("/profile-names", response_model=dict[str, str])
+async def profile_names(
+    body: ProfileNameRequest,
+    client=Depends(get_supabase_admin),
+) -> dict[str, str]:
+    """Resolve display names for a set of user IDs (batch)."""
+    return await repository.profile_names(client, body.user_ids)
 
 
 @router.get("/analytics", response_model=WebsiteAnalytics)
 async def analytics(
-    _: AdminUser,
     days: Annotated[int, Query(ge=1, le=365)] = 30,
     client=Depends(get_supabase_admin),
 ) -> WebsiteAnalytics:

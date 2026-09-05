@@ -1,9 +1,4 @@
-"""Chat routes. AI generation remains the existing `/consult` path (FR-012).
-
-T046 decision: if persistence fails after a successful AI reply, route returns
-HTTP 503 with the reply plus `persisted: false` and a sanitized standard error
-body. The successful AI result is never discarded.
-"""
+"""Customer chat and consultant routes."""
 
 from __future__ import annotations
 
@@ -12,7 +7,8 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Path, status
 
-from app.deps.auth import AuthenticatedUser, require_user
+from app.auth.models import CurrentUser
+from app.auth.permissions import require_customer
 from app.deps.db import get_supabase
 from app.errors import DatabaseUnavailableError, NotFoundError
 from app.repositories import chat as repository
@@ -24,10 +20,16 @@ from app.schemas.chat import (
     ChatMessagesResponse,
     ChatThreadCreate,
     ChatThreadCreated,
+    ConsultRequest,
+    ConsultResponse,
 )
+from app.services.agent_service import execute_consultant
 
 logger = logging.getLogger("app.chat")
-router = APIRouter(prefix="/chat", tags=["chat"])
+router = APIRouter(
+    prefix="/chat",
+    tags=["chat"],
+)
 
 
 def _message(row: dict[str, Any]) -> ChatMessage:
@@ -38,6 +40,20 @@ def _message(row: dict[str, Any]) -> ChatMessage:
         createdAt=str(row.get("created_at", "")),
         suggestedServiceId=row.get("suggested_service_id"),
     )
+
+
+@router.post("/consult", response_model=ConsultResponse)
+async def consult(
+    body: ConsultRequest,
+    user: Annotated[CurrentUser, Depends(require_customer)],
+) -> ConsultResponse:
+    output = await execute_consultant(
+        user_id=user.id,
+        message=body.message,
+        session_id=body.sessionId,
+        history=[item.model_dump() for item in body.history],
+    )
+    return ConsultResponse.model_validate(output)
 
 
 async def _generate_reply(content: str) -> str:
@@ -54,19 +70,19 @@ async def _generate_reply(content: str) -> str:
 @router.post("/threads", status_code=status.HTTP_201_CREATED, response_model=ChatThreadCreated)
 async def create_thread(
     body: ChatThreadCreate,
-    user: Annotated[AuthenticatedUser, Depends(require_user)],
+    user: Annotated[CurrentUser, Depends(require_customer)],
     client=Depends(get_supabase),
 ) -> ChatThreadCreated:
-    return ChatThreadCreated(threadId=await repository.create_thread(client, user.user_id, body.model_dump()))
+    return ChatThreadCreated(threadId=await repository.create_thread(client, user.id, body.model_dump()))
 
 
 @router.get("/threads/{threadId}/messages", response_model=ChatMessagesResponse)
 async def get_messages(
     thread_id: Annotated[str, Path(alias="threadId", min_length=1)],
-    user: Annotated[AuthenticatedUser, Depends(require_user)],
+    user: Annotated[CurrentUser, Depends(require_customer)],
     client=Depends(get_supabase),
 ) -> ChatMessagesResponse:
-    rows = await repository.list_messages(client, thread_id, user.user_id)
+    rows = await repository.list_messages(client, thread_id, user.id)
     return ChatMessagesResponse(messages=[_message(row) for row in rows])
 
 
@@ -74,18 +90,18 @@ async def get_messages(
 async def send_message(
     thread_id: Annotated[str, Path(alias="threadId", min_length=1)],
     body: ChatMessageCreate,
-    user: Annotated[AuthenticatedUser, Depends(require_user)],
+    user: Annotated[CurrentUser, Depends(require_customer)],
     client=Depends(get_supabase),
 ) -> ChatExchange:
-    if await repository.get_thread(client, thread_id, user.user_id) is None:
+    if await repository.get_thread(client, thread_id, user.id) is None:
         raise NotFoundError()
     user_row = await repository.add_message(
-        client, thread_id=thread_id, user_id=user.user_id, role="user", content=body.content
+        client, thread_id=thread_id, user_id=user.id, role="user", content=body.content
     )
     reply = await _generate_reply(body.content)
     try:
         assistant_row = await repository.add_message(
-            client, thread_id=thread_id, user_id=user.user_id, role="assistant", content=reply
+            client, thread_id=thread_id, user_id=user.id, role="assistant", content=reply
         )
     except DatabaseUnavailableError:
         # The framework's standard envelope cannot carry arbitrary success data;
@@ -104,12 +120,12 @@ async def send_message(
 @router.get("/threads/{threadId}/suggested-service")
 async def suggested_service(
     thread_id: Annotated[str, Path(alias="threadId", min_length=1)],
-    user: Annotated[AuthenticatedUser, Depends(require_user)],
+    user: Annotated[CurrentUser, Depends(require_customer)],
     client=Depends(get_supabase),
 ) -> dict[str, dict]:
-    if await repository.get_thread(client, thread_id, user.user_id) is None:
+    if await repository.get_thread(client, thread_id, user.id) is None:
         raise NotFoundError()
-    rows = await repository.list_messages(client, thread_id, user.user_id)
+    rows = await repository.list_messages(client, thread_id, user.id)
     service_id = next((row.get("suggested_service_id") for row in reversed(rows) if row.get("suggested_service_id")), None)
     if not service_id:
         raise NotFoundError()

@@ -16,6 +16,10 @@ SERVICE_ID = "service-1"
 
 def _store():
     return {
+        "profiles": [
+            {"id": TEST_USER_ID, "role": "customer"},
+            {"id": TEST_USER_B_ID, "role": "customer"},
+        ],
         "chat_threads": [{"id": THREAD_ID, "user_id": TEST_USER_ID, "context_type": "consultant"}],
         "chat_messages": [
             {"id": "m2", "thread_id": THREAD_ID, "user_id": TEST_USER_ID, "role": "assistant", "content": "second", "created_at": "2026-08-02T00:00:00+00:00"},

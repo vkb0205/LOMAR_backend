@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 from pydantic import BaseModel, Field
 
 
@@ -23,7 +21,6 @@ class ChatThreadCreate(BaseModel):
     contextType: str = Field(default="consultant")
     vendorId: str | None = None
     serviceId: str | None = None
-    designProjectId: str | None = None
 
 
 class ChatThreadCreated(BaseModel):
@@ -38,3 +35,21 @@ class ChatExchange(BaseModel):
     userMessage: ChatMessage
     assistantMessage: ChatMessage
     persisted: bool = True
+
+
+class ConsultHistoryMessage(BaseModel):
+    role: str = Field(pattern="^(user|assistant)$")
+    content: str = Field(min_length=1, max_length=4000)
+
+
+class ConsultRequest(BaseModel):
+    message: str = Field(min_length=1, max_length=2000)
+    sessionId: str | None = Field(default=None, max_length=200)
+    history: list[ConsultHistoryMessage] = Field(default_factory=list, max_length=12)
+
+
+class ConsultResponse(BaseModel):
+    reply: str | None = None
+    sessionId: str | None = None
+    toolsUsed: list[str] = Field(default_factory=list)
+    retrievedServices: list[dict] = Field(default_factory=list)

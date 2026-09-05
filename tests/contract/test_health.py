@@ -65,6 +65,7 @@ class TestHealthDependencyFreedom:
         body = client.get("/api/v1/health").json()
         for key in ("ok", "service", "model", "provider", "project", "location"):
             assert key in body, f"missing health field: {key}"
+        assert body["service"] == "LOMAR Backend API"
 
     @pytest.mark.parametrize("path", HEALTH_PATHS)
     def test_correlation_id_present(self, client, path):

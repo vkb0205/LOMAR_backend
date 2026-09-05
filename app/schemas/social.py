@@ -2,15 +2,7 @@
 
 from __future__ import annotations
 
-from enum import Enum
-from typing import Any
-
 from pydantic import BaseModel, Field
-
-
-class FolloweeType(str, Enum):
-    user = "user"
-    vendor = "vendor"
 
 
 class FeedPost(BaseModel):
@@ -21,7 +13,6 @@ class FeedPost(BaseModel):
     name: str
     time: str
     content: str
-    tags: str
     likes: int
     comments: int
     shares: int
@@ -29,15 +20,10 @@ class FeedPost(BaseModel):
     likedByMe: bool
 
 
-class FeedResponse(BaseModel):
-    posts: list[FeedPost]
-
-
 class PostCreate(BaseModel):
     title: str | None = None
     content: str = Field(min_length=1)
     coverImageUrl: str | None = None
-    tagIds: list[str] = Field(default_factory=list)
 
 
 class PostUpdate(BaseModel):
@@ -60,23 +46,5 @@ class LikeResponse(BaseModel):
     likeCount: int
 
 
-class FollowCreate(BaseModel):
-    followeeType: FolloweeType
-    followeeId: str = Field(min_length=1)
-
-
-class FollowResponse(BaseModel):
-    following: bool
-    followerCount: int
-
-
 class MutationResult(BaseModel):
     ok: bool = True
-
-
-class PostResource(BaseModel):
-    post: dict[str, Any]
-
-
-class CommentResource(BaseModel):
-    comment: dict[str, Any]

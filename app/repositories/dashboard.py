@@ -43,16 +43,6 @@ async def list_user_vouchers(client: AsyncClient, user_id: str) -> list[dict[str
     return unwrap(result) or []
 
 
-async def list_saved_designs(client: AsyncClient, user_id: str) -> list[dict[str, Any]]:
-    result = await run_db(
-        lambda: client.table("ai_design_projects")
-        .select("id, title, category, status, created_at")
-        .eq("user_id", user_id)
-        .execute()
-    )
-    return unwrap(result) or []
-
-
 async def get_journey_task(client: AsyncClient, task_id: str) -> dict[str, Any] | None:
     result = await run_db(
         lambda: client.table("journey_tasks").select("*").eq("id", task_id).execute()

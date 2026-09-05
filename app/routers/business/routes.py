@@ -11,8 +11,14 @@ from app.auth.permissions import require_vendor
 from app.deps.db import get_supabase, run_db, unwrap
 from app.errors import ForbiddenError, NotFoundError
 from app.schemas.admin import ServiceStatusUpdate
+from app.routers.business_intelligence import router as business_intelligence_router
 
-router = APIRouter(prefix="/business", tags=["business"], dependencies=[Depends(require_vendor)])
+router = APIRouter()
+operations_router = APIRouter(
+    prefix="/business",
+    tags=["business"],
+    dependencies=[Depends(require_vendor)],
+)
 VendorUser = Annotated[CurrentUser, Depends(require_vendor)]
 
 
@@ -46,12 +52,12 @@ async def require_service_owner(client, service_id: str, user_id: str) -> dict:
     return service
 
 
-@router.get("/services")
+@operations_router.get("/services")
 async def services(user: VendorUser, client=Depends(get_supabase)) -> list[dict]:
     return await _owned_rows(client, "services", user.id)
 
 
-@router.put("/services/{serviceId}/status")
+@operations_router.put("/services/{serviceId}/status")
 async def update_service_status(
     service_id: Annotated[str, Path(alias="serviceId", min_length=1)],
     body: ServiceStatusUpdate,
@@ -68,11 +74,15 @@ async def update_service_status(
     return {"ok": True}
 
 
-@router.get("/service-requests")
+@operations_router.get("/service-requests")
 async def service_requests(user: VendorUser, client=Depends(get_supabase)) -> list[dict]:
     return await _owned_rows(client, "service_requests", user.id)
 
 
-@router.get("/vouchers")
+@operations_router.get("/vouchers")
 async def vouchers(user: VendorUser, client=Depends(get_supabase)) -> list[dict]:
     return await _owned_rows(client, "vouchers", user.id)
+
+
+router.include_router(operations_router)
+router.include_router(business_intelligence_router)

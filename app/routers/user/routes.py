@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends
 
 from app.auth.models import CurrentUser
 from app.auth.permissions import require_customer
+from app.routers.user_plan import router as user_plan_router
 from .chat import router as chat_router
 from .dashboard import router as dashboard_router
 
@@ -21,3 +22,4 @@ async def profile(user: Annotated[CurrentUser, Depends(require_customer)]) -> di
 router.include_router(account_router)
 router.include_router(dashboard_router)
 router.include_router(chat_router)
+router.include_router(user_plan_router)

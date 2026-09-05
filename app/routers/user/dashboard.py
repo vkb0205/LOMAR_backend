@@ -28,10 +28,12 @@ async def get_dashboard(
     user_tasks = await repository.list_user_journey_tasks(client, user.id)
     vouchers = await repository.list_vouchers(client)
     user_vouchers = await repository.list_user_vouchers(client, user.id)
+    saved_designs = await repository.list_saved_designs(client, user.id)
 
     return DashboardData(
         tasks=service.map_dashboard_tasks(journey_tasks, user_tasks),
         vouchers=service.map_dashboard_vouchers(vouchers, user_vouchers),
+        savedDesigns=saved_designs,
     )
 
 

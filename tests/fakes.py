@@ -256,8 +256,8 @@ def _matches_or(row: dict[str, Any], expression: str) -> bool:
     return False
 
 
-# Composite uniqueness the current schema enforces. The fake mirrors it so
-# idempotency tests are meaningful.
+# Composite uniqueness the real schema enforces (migrate_to_v2.sql). The fake
+# mirrors them so idempotency tests are meaningful.
 _UNIQUE_KEYS: dict[str, list[list[str]]] = {
     "user_journey_tasks": [["user_id", "task_id"]],
     "user_vouchers": [["user_id", "voucher_id"]],

@@ -76,6 +76,7 @@ def test_like_and_unlike_are_idempotent(client, app):
     again = client.delete(f"/api/v1/posts/{POST_ID}/likes", headers=_auth())
     assert again.status_code == 200
 
+
 def test_non_owner_edit_or_delete_is_masked_404(client, app):
     _install(app)
     edit = client.put(

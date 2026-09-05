@@ -76,9 +76,9 @@ async def run_db(operation: Callable[[], Awaitable[T]]) -> T:
 async def get_supabase(request: Request) -> AsyncClient:
     """Return the caller-JWT-scoped client for this request.
 
-    Reuses the client bound by ``AuthMiddleware`` when present; otherwise
-    builds an anonymous client (still subject to RLS) so that public endpoints
-    work for unauthenticated callers (FR-006).
+    Reuses a caller-scoped client when one has been injected; otherwise builds
+    an anonymous or caller-JWT client (still subject to RLS). Centralized auth
+    dependencies place the verified access token on ``request.state``.
     """
     bound = getattr(request.state, "supabase", None)
     if bound is not None:
@@ -131,4 +131,3 @@ async def get_supabase_admin(request: Request) -> AsyncClient:
 def unwrap(result: Any) -> Any:
     """Return response data, or the original value for test adapters."""
     return getattr(result, "data", result)
-

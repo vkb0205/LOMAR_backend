@@ -28,6 +28,8 @@ uvicorn app.main:app --host "${API_HOST:-0.0.0.0}" --port "${API_PORT:-8080}"
 | `SUPABASE_SERVICE_ROLE_KEY` | admin analytics | empty | Secret Manager only; never commit or pass as public env config |
 | `SUPABASE_JWT_SECRET` | authenticated routes | empty | HS256 Supabase JWT secret; Secret Manager only |
 | `SUPABASE_JWT_AUDIENCE` | no | `authenticated` | JWT audience |
+| `SUPABASE_JWT_ISSUER` | no | empty | Optional expected JWT issuer |
+| `SUPABASE_JWKS_URL` | no | derived from `SUPABASE_URL` | Override for asymmetric JWT signing keys |
 | `SUPABASE_TIMEOUT_SECONDS` | no | `8` | Per-operation DB timeout |
 | `AI_TEXT_PROVIDER` | no | `openai` | Text provider: `openai` (any OpenAI-compatible API) or `google` |
 | `OPENAI_API_KEY` | OpenAI provider | empty | Key for the OpenAI-compatible API (e.g. OpenAI, DeepSeek, OpenRouter, local gateway) |
@@ -38,7 +40,6 @@ uvicorn app.main:app --host "${API_HOST:-0.0.0.0}" --port "${API_PORT:-8080}"
 | `GOOGLE_CLOUD_PROJECT` | google provider | empty | GCP project |
 | `GOOGLE_CLOUD_LOCATION` | google provider | `global` | Vertex location |
 | `GOOGLE_TEXT_MODEL` | no | `gemini-2.5-flash` | Consultant model fallback for the text provider |
-| `NANO_BANANA_MODEL` | image AI | empty | Image model |
 
 ## Endpoint reference
 
@@ -49,13 +50,14 @@ sanitized envelope `{ "error": { "code": "...", "message": "..." } }`.
 
 | Group | Policy | Included domains |
 |---|---|---|
-| Public | No JWT required | Health, catalog, public social reads, analytics |
-| Customer | Exact `profiles.role = customer` | Profile, dashboard, chat |
+| Public | No JWT required | Health, catalog, public social reads, analytics, consultant (optional JWT) |
+| Customer | Exact `profiles.role = customer` | Profile, dashboard, plan acceptance, durable chat |
 | Vendor | Exact `profiles.role = vendor` | Owned services, requests, vouchers |
+| Business intelligence | `profiles.role = vendor` or `admin` | Vendor-scoped or platform-wide BI |
 | Admin | Exact `profiles.role = admin` | Platform administration |
 
 `/health` remains dependency-free. Legacy VTON routes (`/proxy-image`,
-`/test-try-on*`, and `/consult`) are retired and are not mounted.
+`/test-try-on*`, and the old root-level `/consult`) are retired and are not mounted.
 
 ### Catalog (public)
 
@@ -63,10 +65,15 @@ sanitized envelope `{ "error": { "code": "...", "message": "..." } }`.
 |---|---|---|
 | GET | `/api/v1/catalog/vendors` | `{ "vendors": [...] }` |
 | GET | `/api/v1/catalog/vendors/{vendorId}` | `{ "vendor": {...}, "services": [...] }` |
-| GET | `/api/v1/catalog/customize` | `{ "services": [...], "vendors": [...] }` |
 | GET | `/api/v1/catalog/services/{serviceId}/suggestion` | `{ "service": {...} }` |
+| GET | `/api/v1/catalog/wedding-plans` | `{ "plans": [...] }` (curated packages, active only) |
+| GET | `/api/v1/catalog/wedding-plans/{planId}` | `{ "plan": {...}, "items": [...] }` |
 
-Only catalog-visible `active` vendor/service rows are public.
+Only catalog-visible `active` vendor/service/plan rows are public. `wedding_plans`
+bundle multiple catalog services (possibly multi-vendor) into one priced offer;
+`wedding_plan_items` link a plan to its services. The couple consultant
+(`POST /api/v1/chat/consult`) can discover and inspect these plans via the
+`list_wedding_plans` / `get_wedding_plan` agent tools.
 
 ### Dashboard (authenticated)
 
@@ -78,6 +85,24 @@ Only catalog-visible `active` vendor/service rows are public.
 
 Owner IDs come only from the verified JWT. Upserts use existing composite
 constraints and server-owned timestamps.
+
+### User wedding-plan acceptance (authenticated)
+
+| Method | Path | Body / response |
+|---|---|---|
+| PUT | `/api/v1/me/plan-items/{itemType}/{itemId}` | `{ "status": "accepted" \| "declined" \| "removed" }` → `{ "itemType", "itemId", "status", "ok": true }` |
+
+`itemType` is `service` or `plan`. Anonymous calls return `401`, an unknown
+item `404`, and an invalid status `422`. The `user_id` is always forced from
+the verified JWT and stored owner-scoped (`user_plan_items`); re-accepting the
+same item is idempotent. Accepted choices are read through the
+security-invoker view `v_user_accepted_plan` (accepted-only, category derived
+from `services.category` or `wedding_plans.style`).
+
+When `POST /api/v1/chat/consult` carries a valid JWT, the caller's accepted-plan
+summary (categories + counts, no PII) is injected as agent context; anonymous
+consults get none. The `get_user_plan` agent tool is read-only — the user, not
+the agent, decides.
 
 ### Social (feed public; mutations authenticated)
 
@@ -92,10 +117,11 @@ constraints and server-owned timestamps.
 
 Non-owner post/comment mutation is masked as `404`.
 
-### Chat (authenticated)
+### Chat (public consultant; authenticated threads)
 
 | Method | Path |
 |---|---|
+| POST | `/api/v1/chat/consult` (JWT optional) |
 | POST | `/api/v1/chat/threads` |
 | GET | `/api/v1/chat/threads/{threadId}/messages` |
 | POST | `/api/v1/chat/threads/{threadId}/messages` |
@@ -126,3 +152,36 @@ pytest -q
 ```
 
 Tests use `tests.fakes.FakeSupabase`; no live network or production data.
+
+## Manual BI smoke test
+
+Start the backend and frontend in separate terminals:
+
+```bash
+# terminal 1
+uvicorn app.main:app --reload --port 8080
+
+# terminal 2
+cd ../LOMAR
+npm run dev
+```
+
+Check the public health endpoint:
+
+```bash
+curl http://localhost:8080/health
+```
+
+Then open `http://localhost:3000/business-intelligence`, sign in with a
+Supabase account, and verify that the overview loads. Run an AI agent, generate
+a report, preview a recommendation action, and ask the copilot about `past
+activities` or `campaign recommendations`. Recommendation previews are
+simulations and do not modify business data.
+
+Private BI routes intentionally reject anonymous requests:
+
+```bash
+curl -i http://localhost:8080/api/v1/business-intelligence/overview
+```
+
+The expected result is `401 Unauthorized`.

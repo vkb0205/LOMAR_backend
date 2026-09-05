@@ -10,6 +10,11 @@ from supabase import AsyncClient
 from app.deps.db import run_db, unwrap
 
 
+async def _select(client: AsyncClient, table: str, columns: str = "*") -> list[dict[str, Any]]:
+    result = await run_db(lambda: client.table(table).select(columns).execute())
+    return unwrap(result) or []
+
+
 async def _select_filtered(
     client: AsyncClient,
     table: str,
@@ -162,3 +167,13 @@ async def toggle_like(client: AsyncClient, user_id: str, post_id: str, liked: bo
 async def like_count(client: AsyncClient, post_id: str) -> int:
     rows = await _select_filtered(client, "post_likes", [("post_id", post_id)])
     return len(rows)
+
+
+async def comments_for_posts(client: AsyncClient, post_ids: list[str]) -> dict[str, list[dict[str, Any]]]:
+    if not post_ids:
+        return {}
+    result = await run_db(lambda: client.table("post_comments").select("*").in_("post_id", post_ids).execute())
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for row in unwrap(result) or []:
+        grouped.setdefault(row["post_id"], []).append(row)
+    return grouped

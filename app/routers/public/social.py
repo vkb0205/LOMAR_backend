@@ -143,5 +143,3 @@ async def delete_comment(
     )
     await repository.delete_by_id(client, "post_comments", "id", comment_id)
     return MutationResult()
-
-

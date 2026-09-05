@@ -34,7 +34,7 @@ async def health() -> HealthResponse:
     return HealthResponse(
         ok=True,
         service="LOMAR Backend API",
-        model=settings.nano_banana_model or settings.google_text_model,
+        model=settings.ai_text_model or settings.google_text_model,
         provider="vertex-ai" if settings.vertex_configured else "genai",
         project=settings.google_cloud_project,
         location=settings.google_cloud_location,

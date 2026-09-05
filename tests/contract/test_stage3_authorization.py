@@ -8,7 +8,7 @@ Verifies the four-tier security model:
   /admin/*      — authenticated + role=admin
 
 Security flow per request:
-  request → AuthMiddleware (JWT verify) → require_user (DB role lookup)
+  request → centralized dependency (JWT verify + DB role lookup)
   → role gate (403) → endpoint
 
 The JWT ``role`` claim is never consulted — authorization is driven entirely by

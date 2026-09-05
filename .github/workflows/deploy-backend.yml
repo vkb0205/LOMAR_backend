@@ -2,7 +2,7 @@ name: Build and Deploy Backend to Cloud Run
 
 # This workflow lives in the LOMAR_backend repository, whose root IS the
 # backend build context (T015). The two older copies under the LOMAR frontend
-# repo and the LORMAR working root pointed at `./backend` and `./vton_test_ui`
+# repo and the LORMAR working root pointed at obsolete build directories
 # respectively — directories that exist in neither repository — so neither
 # could ever build. They are retired in favour of this file.
 
@@ -20,9 +20,9 @@ on:
 
 env:
   PROJECT_ID: lomar-500117
-  SERVICE_NAME: lomar-vton-backend
+  SERVICE_NAME: lomar-backend
   REGION: us-central1
-  IMAGE_NAME: lomar-vton-backend
+  IMAGE_NAME: lomar-backend
 
 jobs:
   test:
@@ -87,7 +87,7 @@ jobs:
             --region ${{ env.REGION }} \
             --allow-unauthenticated \
             --port 8080 \
-            --set-env-vars="GOOGLE_GENAI_USE_VERTEXAI=true,GOOGLE_CLOUD_PROJECT=${{ env.PROJECT_ID }},GOOGLE_CLOUD_LOCATION=global,NANO_BANANA_MODEL=gemini-3.1-flash-image,GOOGLE_TEXT_MODEL=${{ vars.GOOGLE_TEXT_MODEL || 'gemini-2.5-flash' }},API_HOST=0.0.0.0,API_PORT=8080,ALLOWED_ORIGINS=${{ vars.ALLOWED_ORIGINS }},ENABLE_AUTH=${{ vars.ENABLE_AUTH || 'false' }},SUPABASE_URL=${{ vars.SUPABASE_URL }},SUPABASE_TIMEOUT_SECONDS=${{ vars.SUPABASE_TIMEOUT_SECONDS || '8' }}" \
+            --set-env-vars="GOOGLE_GENAI_USE_VERTEXAI=true,GOOGLE_CLOUD_PROJECT=${{ env.PROJECT_ID }},GOOGLE_CLOUD_LOCATION=global,GOOGLE_TEXT_MODEL=${{ vars.GOOGLE_TEXT_MODEL || 'gemini-2.5-flash' }},API_HOST=0.0.0.0,API_PORT=8080,ALLOWED_ORIGINS=${{ vars.ALLOWED_ORIGINS }},ENABLE_AUTH=${{ vars.ENABLE_AUTH || 'false' }},SUPABASE_URL=${{ vars.SUPABASE_URL }},SUPABASE_TIMEOUT_SECONDS=${{ vars.SUPABASE_TIMEOUT_SECONDS || '8' }}" \
             --update-secrets="SUPABASE_JWT_SECRET=SUPABASE_JWT_SECRET:latest,SUPABASE_ANON_KEY=SUPABASE_ANON_KEY:latest,SUPABASE_SERVICE_ROLE_KEY=SUPABASE_SERVICE_ROLE_KEY:latest"
 
       # --- Secret vs public config split (T015, Constitution II) ---

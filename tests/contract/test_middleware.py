@@ -76,11 +76,11 @@ class TestCorrelationId:
         response = client.get("/health", headers={"X-Correlation-Id": "abc-123"})
         assert response.headers.get("X-Correlation-Id") == "abc-123"
 
-    def test_client_supplied_id_echoed_on_retired_route(self, client, settings_override):
+    def test_client_supplied_id_echoed_on_preserved_bi_route(self, client, settings_override):
         with settings_override({"ENABLE_AUTH": "true"}):
-            response = client.get("/consult", headers={"X-Correlation-Id": "xyz-789"})
+            response = client.get("/api/v1/business-intelligence/overview", headers={"X-Correlation-Id": "xyz-789"})
         assert response.headers.get("X-Correlation-Id") == "xyz-789"
-        assert response.status_code == 404
+        assert response.status_code == 401
 
 
 class TestDbTimeoutMapsTo503:

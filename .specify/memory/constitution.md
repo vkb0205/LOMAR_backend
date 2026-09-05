@@ -1,4 +1,7 @@
 <!--
+HISTORICAL NOTICE: This constitution predates the Business Intelligence
+migration. Its VTON endpoint requirements are superseded by the active BI
+contracts in app/routers/business_intelligence.py and the backend README.
 SYNC IMPACT REPORT
 ==================
 Version change: (uninitialized template) → 1.0.0
@@ -52,16 +55,12 @@ ecosystem (Phố Hạnh Phúc Hồ Văn Huê). It lives in its own repository di
 The frontend is already written against a specific HTTP contract. The backend
 MUST satisfy that contract rather than force frontend rewrites.
 
-- The service MUST expose, at minimum, the endpoints the frontend already
-  calls: `GET /health`, `GET /proxy-image?url=<encoded>`,
-  `POST /test-try-on`, `POST /test-try-on-upload`, and `POST /consult`.
-- `POST /test-try-on-upload` MUST accept `multipart/form-data` with fields
-  `body_image`, `garment_image`, `category`, and `prompt`.
-- Try-on responses MUST include an image URL readable as `imageUrl`,
-  `image_url`, `output.imageUrl`, or `output.image_url`, and SHOULD include a
-  human-readable `message`.
-- `POST /consult` MUST accept `{ "message": string }` and return the reply
-  shape the frontend's `ConsultResponse` expects.
+- The service MUST expose the frontend's active Business Intelligence contract:
+  `GET /health`, `GET /api/v1/business-intelligence/overview`, and the
+  authenticated report, agent-run, action-preview, and copilot endpoints under
+  `/api/v1/business-intelligence`.
+- Simulated recommendation actions MUST clearly state that they do not mutate
+  production business data.
 - Any breaking change to a request or response shape MUST ship with a
   coordinated change in `LOMAR/src/features/**/services/` and
   `LOMAR/src/shared/api/`, referenced in the same pull request.

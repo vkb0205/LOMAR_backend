@@ -66,7 +66,7 @@ def test_dashboard_returns_only_callers_rows(client, app):
             "requiredTaskId": TASK_ID,
         }
     ]
-    assert "savedDesigns" not in body
+    assert [design["id"] for design in body["savedDesigns"]] == []
 
 
 def test_user_b_cannot_see_user_a_rows(client, app):
@@ -74,7 +74,7 @@ def test_user_b_cannot_see_user_a_rows(client, app):
     body = client.get("/api/v1/me/dashboard", headers=_auth(TEST_USER_B_ID)).json()
     assert body["tasks"][0]["status"] == "pending"
     assert body["vouchers"][0]["status"] == "unlocked"
-    assert "savedDesigns" not in body
+    assert [design["id"] for design in body["savedDesigns"]] == []
 
 
 def test_anonymous_and_expired_tokens_are_401(client, app, expired_token):

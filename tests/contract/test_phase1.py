@@ -11,8 +11,33 @@ class TestHealth:
         assert response.json()["ok"] is True
 
     def test_health_shape(self, client):
-        body = client.get("/health").json()
-        assert body["service"] == "LOMAR Backend API"
+        """Response matches the shape documented in LOMAR/README.md."""
+        resp = client.get("/health")
+        data = resp.json()
+        assert data["ok"] is True
+        assert data["service"] == "LOMAR Backend API"
+        assert "model" in data
+        assert "provider" in data
+        assert "project" in data
+        assert "location" in data
+        assert "vertex_configured" in data
+
+    def test_health_v1_alias(self, client):
+        """The /api/v1/health alias also exists."""
+        resp = client.get("/api/v1/health")
+        assert resp.status_code == 200
+        assert resp.json()["ok"] is True
+
+    def test_health_never_gated_by_auth(self, client, settings_override):
+        """Constitution III: /health answers without upstreams, even with auth on."""
+        with settings_override({"ENABLE_AUTH": "true"}):
+            resp = client.get("/health")
+            assert resp.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# Middleware: X-Correlation-Id
+# ---------------------------------------------------------------------------
 
 
 class TestCorrelationId:
@@ -35,3 +60,37 @@ class TestRetiredLegacyRoutes:
     )
     def test_legacy_vton_routes_are_not_mounted(self, client, method, path):
         assert client.request(method, path).status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Error envelope (research.md R5)
+# ---------------------------------------------------------------------------
+
+
+class TestErrorEnvelope:
+    def test_not_found_uses_envelope(self, client):
+        resp = client.get("/definitely/missing")
+        body = resp.json()
+        assert body["error"]["code"] == "not_found"
+        assert "message" in body["error"]
+
+    def test_validation_error_uses_envelope(self, client):
+        """FastAPI's own validation errors are remapped to the envelope."""
+        from tests.conftest import TEST_ADMIN_ID, factory_token
+
+        resp = client.post(
+            "/api/v1/business-intelligence/agents/run",
+            headers={"Authorization": f"Bearer {factory_token(TEST_ADMIN_ID, role='admin')}"},
+            json={},
+        )
+        assert resp.status_code == 422
+        body = resp.json()
+        assert body["error"]["code"] == "validation_error"
+        assert "fields" in body["error"]
+
+    def test_unauthenticated_uses_envelope(self, client):
+        """Protected BI paths require a valid caller token."""
+        resp = client.post("/api/v1/business-intelligence/chat", json={"message": "hi"})
+        assert resp.status_code == 401
+        body = resp.json()
+        assert body["error"]["code"] == "unauthenticated"

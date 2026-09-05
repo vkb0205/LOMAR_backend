@@ -1,6 +1,6 @@
-"""Unit tests for ``app.services.ai_text``.
+"""Unit tests for ``app.agents.chatbot.runtime`` (compat: ``app.services.ai_text``).
 
-Covers the OpenAI-compatible provider path used by `/consult` and the chat
+Covers the OpenAI-compatible provider path used by the BI copilot and chat
 router: the client must be constructed with the configured `base_url`
 (custom provider support, e.g. `OPENAI_BASE_URL=https://api.shopaikey.com/v1`)
 and `api_key`, the configured model name must be forwarded verbatim, and the
@@ -22,7 +22,7 @@ if ROOT not in sys.path:
 
 from app.config import get_settings
 from app.errors import UpstreamUnavailableError
-from app.services import ai_text
+from chatbot import runtime as ai_text
 
 
 def _fake_completion(text: str) -> SimpleNamespace:

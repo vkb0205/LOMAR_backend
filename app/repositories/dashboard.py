@@ -43,6 +43,22 @@ async def list_user_vouchers(client: AsyncClient, user_id: str) -> list[dict[str
     return unwrap(result) or []
 
 
+async def list_saved_designs(client: AsyncClient, user_id: str) -> list[dict[str, Any]]:
+    """Keep the dashboard transport bucket stable while AI designs are retired."""
+    return []
+
+
+async def list_saved_designs(client: AsyncClient, user_id: str) -> list[dict[str, Any]]:
+    """Saved AI-design projects.
+
+    The `ai_design_projects` table was removed in the schema simplification
+    (the AI-design workspace is slated for later redesign). The dashboard
+    still exposes a `savedDesigns` bucket for transport-shape stability, but it
+    is always empty until that feature returns.
+    """
+    return []
+
+
 async def get_journey_task(client: AsyncClient, task_id: str) -> dict[str, Any] | None:
     result = await run_db(
         lambda: client.table("journey_tasks").select("*").eq("id", task_id).execute()

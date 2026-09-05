@@ -34,8 +34,8 @@ services:
       - key: ALLOWED_ORIGINS
         value: https://lomar.onrender.com,https://vkb0205.github.io
 
-      # /api/v1/me/* and /api/v1/admin/* always require auth; this flag only
-      # gates the legacy AI endpoints (/consult, /test-try-on, /proxy-image).
+      # Private /api/v1 routes always require auth; this flag remains for
+      # development compatibility with older public application surfaces.
       - key: ENABLE_AUTH
         value: "true"
 

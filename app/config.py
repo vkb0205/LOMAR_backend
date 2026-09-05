@@ -51,9 +51,8 @@ class Settings(BaseSettings):
     google_cloud_project: str = ""
     google_cloud_location: str = "global"
     google_text_model: str = "gemini-2.5-flash"
-    nano_banana_model: str = ""
 
-    # --- OpenAI-compatible provider (chat/consult text replies) ---
+    # --- OpenAI-compatible provider (BI copilot text replies) ---
     # Any provider exposing an OpenAI-compatible /chat/completions API.
     ai_text_provider: str = "openai"
     openai_api_key: str = ""
@@ -78,6 +77,18 @@ class Settings(BaseSettings):
     # Turns of prior conversation accepted from the client. History arrives
     # from an untrusted browser, so it is bounded before reaching the provider.
     agent_max_history_messages: int = Field(default=12, ge=0, le=50)
+
+    # --- Agent session memory (in-process, prototype scope) ---
+    session_ttl_seconds: int = Field(default=1800, ge=60, le=86_400)
+    # Hard ceiling on concurrently tracked sessions. Memory is process-local
+    # and unbounded growth would be a trivial DoS, so the store evicts the
+    # least-recently-used session once this is reached.
+    session_max_count: int = Field(default=500, ge=1, le=100_000)
+
+
+    # --- Bounded page sizes (data-model.md invariant 8) ---
+    default_page_size: int = Field(default=50, ge=1, le=200)
+    max_page_size: int = Field(default=200, ge=1, le=1000)
 
     @field_validator("supabase_url")
     @classmethod

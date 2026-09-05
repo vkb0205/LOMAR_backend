@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends
 
 from app.deps.db import get_supabase
 from app.repositories import catalog
+from app.routers.user.chat import public_router as public_chat_router
 from .analytics import router as analytics_router
 from .catalog import router as catalog_router
 from .health import router as health_router
@@ -35,3 +36,4 @@ router.include_router(health_router, tags=["health"])
 router.include_router(catalog_router)
 router.include_router(social_router)
 router.include_router(analytics_router)
+router.include_router(public_chat_router)

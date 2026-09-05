@@ -23,7 +23,8 @@ if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
 from app.config import get_settings
-from app.services import agent_tools, ai_text
+from chatbot import tools as agent_tools
+from chatbot import runtime as ai_text
 from tests.fakes import FakeSupabase
 
 
@@ -405,6 +406,153 @@ class TestBudgetSearchRegression:
         assert "max_price" in description
 
 
+class TestCategoryResolution:
+    """The "vest cưới dưới 10 triệu" regression.
+
+    Live repro: the catalog stores category ``Vest``, but the user (and the
+    model) phrase it as "vest cưới". A whole-value category filter on "Vest
+    Cưới" returns zero rows even though three active Vest services exist under
+    10 triệu. The fix: a canonical category registry maps free-text wording to
+    the exact stored category, and `search_services` only accepts canonical
+    names — the agent must resolve first, never guess or keyword-search across
+    unrelated categories.
+    """
+
+    @pytest.fixture
+    def vest_catalog(self) -> FakeSupabase:
+        return FakeSupabase(
+            rows={
+                "services": [
+                    {
+                        "id": "v1",
+                        "vendor_id": "ven-1",
+                        "name": "Vest Cưới BST22DP6-0",
+                        "category": "Vest",
+                        "base_price": 4500000,
+                        "currency": "VND",
+                        "status": "active",
+                    },
+                    {
+                        "id": "v2",
+                        "vendor_id": "ven-1",
+                        "name": "Áo Vest Xanh Sọc",
+                        "category": "Vest",
+                        "base_price": 5250000,
+                        "currency": "VND",
+                        "status": "active",
+                    },
+                    {
+                        "id": "v3",
+                        "vendor_id": "ven-1",
+                        "name": "Vest Xanh Mint 2 Hàng Khuy",
+                        "category": "Vest",
+                        "base_price": 9000000,
+                        "currency": "VND",
+                        "status": "active",
+                    },
+                    {
+                        "id": "dress",
+                        "vendor_id": "ven-2",
+                        "name": "Áo Dài Cưới Diệu Hỷ",
+                        "category": "Váy Cưới",
+                        "base_price": 6000000,
+                        "currency": "VND",
+                        "status": "active",
+                    },
+                ]
+            }
+        )
+
+    def test_vest_cuoi_resolves_to_canonical_vest(self):
+        assert agent_tools.resolve_service_category("vest cưới") == "Vest"
+        assert agent_tools.resolve_service_category("Vest Cưới") == "Vest"
+        assert agent_tools.resolve_service_category("áo vest") == "Vest"
+        assert agent_tools.resolve_service_category("suit") == "Vest"
+
+    def test_unknown_mention_resolves_to_none(self):
+        assert agent_tools.resolve_service_category("xyz không tồn tại") is None
+        assert agent_tools.resolve_service_category("") is None
+        assert agent_tools.resolve_service_category(None) is None
+
+    def test_venue_phrases_resolve_to_venue(self):
+        """'nhà hàng tiệc cưới' names the venue category despite extra words."""
+        assert agent_tools.resolve_service_category("nhà hàng tiệc cưới") == "Venue"
+        assert agent_tools.resolve_service_category("nhà hàng") == "Venue"
+        assert agent_tools.resolve_service_category("sảnh cưới") == "Venue"
+        assert agent_tools.resolve_service_category("địa điểm tổ chức tiệc cưới") == "Venue"
+
+    def test_category_embedded_in_a_longer_phrase_resolves(self):
+        """Extra words around a category name must not hide the category."""
+        assert agent_tools.resolve_service_category("vest cưới dưới 10 triệu") == "Vest"
+        assert agent_tools.resolve_service_category("chụp ảnh cưới ngoài trời") == "Studio"
+        assert agent_tools.resolve_service_category("nhẫn cưới") == "Trang Sức"
+
+    def test_two_word_alias_wins_over_single_token(self):
+        """'nhà hàng' (venue) must not be shadowed by the bare token 'hàng'."""
+        assert agent_tools.resolve_service_category("nhà hàng tiệc cưới") == "Venue"
+
+    @pytest.mark.asyncio
+    async def test_search_services_accepts_canonical_vest(self, vest_catalog):
+        result = await agent_tools.search_services(
+            vest_catalog, category="Vest", max_price=10000000
+        )
+        assert result["count"] == 3
+        names = {s["name"] for s in result["services"]}
+        assert "Vest Cưới BST22DP6-0" in names
+        assert "Áo Vest Xanh Sọc" in names
+        assert "Vest Xanh Mint 2 Hàng Khuy" in names
+        # Never leaks into another category.
+        assert all(s["category"] == "Vest" for s in result["services"])
+
+    @pytest.mark.asyncio
+    async def test_search_services_rejects_unknown_category(self, vest_catalog):
+        """A category that resolves to nothing must be refused, not return 0."""
+        result = await agent_tools.search_services(
+            vest_catalog, category="không tồn tại", max_price=10000000
+        )
+        assert result["count"] == 0
+        assert "error" in result
+        assert "resolve_service_category" in result["error"]
+
+    @pytest.mark.asyncio
+    async def test_search_services_maps_free_text_to_canonical(self, vest_catalog):
+        """'Vest Cưới' resolves to the stored 'Vest' and finds the rows."""
+        result = await agent_tools.search_services(
+            vest_catalog, category="Vest Cưới", max_price=10000000
+        )
+        assert result["count"] == 3
+        assert all(s["category"] == "Vest" for s in result["services"])
+
+    @pytest.mark.asyncio
+    async def test_resolve_tool_returns_canonical(self, vest_catalog):
+        result = await agent_tools.resolve_service_category_tool(
+            vest_catalog, mention="vest cưới"
+        )
+        assert result["found"] is True
+        assert result["category"] == "Vest"
+
+    @pytest.mark.asyncio
+    async def test_resolve_tool_unknown_returns_available(self, vest_catalog):
+        result = await agent_tools.resolve_service_category_tool(
+            vest_catalog, mention="không biết"
+        )
+        assert result["found"] is False
+        assert "Vest" in result["available"]
+
+    def test_resolve_tool_is_registered(self):
+        assert "resolve_service_category" in agent_tools._DISPATCH
+        spec_names = [t["function"]["name"] for t in agent_tools.TOOL_SPECS]
+        assert "resolve_service_category" in spec_names
+
+    def test_search_services_schema_requires_resolution(self):
+        spec = next(
+            t for t in agent_tools.TOOL_SPECS
+            if t["function"]["name"] == "search_services"
+        )
+        description = spec["function"]["parameters"]["properties"]["category"]["description"]
+        assert "resolve_service_category" in description
+
+
 class TestHistorySanitisation:
     def test_system_role_from_client_is_dropped(self, monkeypatch: pytest.MonkeyPatch):
         get_settings.cache_clear()
@@ -605,6 +753,33 @@ class TestStripMarkdownEmphasis:
     def test_removes_italic_and_nested_emphasis(self):
         assert ai_text.strip_markdown_emphasis("*a* and **_b_**") == "a and b"
 
+    def test_strips_image_markup_into_alt_text(self):
+        """An image URL leaking from a thumbnail must not reach the chat."""
+        raw = (
+            "![Hình ảnh]"
+            "(https://scontent.fcxr1-1.fna.fbcdn.net/v/t39.30808-6/1.jpg?nc_cat=100&ccb=1-7)"
+        )
+        assert ai_text.strip_markdown_emphasis(raw) == "Hình ảnh"
+
+    def test_strips_image_markup_keeping_bold_caption(self):
+        """Alt text may itself contain emphasis that still needs unwrapping."""
+        raw = "1. **Korean Wedding Album**\n   - ![**Giá**: 3.500.000 VND](https://x/y.jpg)"
+        assert ai_text.strip_markdown_emphasis(raw) == (
+            "1. Korean Wedding Album\n   - Giá: 3.500.000 VND"
+        )
+
+    def test_strips_link_markup_into_text(self):
+        assert ai_text.strip_markdown_emphasis("[xem chi tiết](https://x/y)") == "xem chi tiết"
+
+    def test_strips_bare_urls(self):
+        assert ai_text.strip_markdown_emphasis("Xem thêm https://cdn.example.com/a.jpg nhé") == (
+            "Xem thêm  nhé"
+        )
+
+    def test_strips_bare_url_on_its_own_line(self):
+        raw = "- Áo Dài Cưới Diệu Hỷ\n- https://cdn.example.com/1.jpg"
+        assert ai_text.strip_markdown_emphasis(raw) == "- Áo Dài Cưới Diệu Hỷ\n- "
+
     def test_preserves_list_structure_and_newlines(self):
         raw = "- Gói A\n- Gói B"
         assert ai_text.strip_markdown_emphasis(raw) == raw
@@ -677,3 +852,294 @@ class TestRetrievedServiceCollection:
             {"services": [{"id": "a", "description": "long text", "owner_id": "u1"}]}
         )
         assert rows == [{"id": "a"}]
+
+
+def _plan_store() -> FakeSupabase:
+    return FakeSupabase(
+        rows={
+            "wedding_plans": [
+                {
+                    "id": "p1",
+                    "name": "Gói Trọn Gói Cổ Điển",
+                    "description": "120-150 khách, cổ điển",
+                    "style": "Cổ Điển",
+                    "min_guests": 100,
+                    "max_guests": 180,
+                    "min_budget": 50000000,
+                    "max_budget": 80000000,
+                    "currency": "VND",
+                    "cover_image_url": "https://example.test/p1.jpg",
+                    "status": "active",
+                },
+                {
+                    "id": "p2",
+                    "name": "Gói Tối Giản",
+                    "min_guests": 50,
+                    "max_guests": 120,
+                    "min_budget": 25000000,
+                    "max_budget": 40000000,
+                    "currency": "VND",
+                    "status": "active",
+                },
+                {
+                    "id": "p3",
+                    "name": "Gói Ẩn",
+                    "min_budget": 9000000,
+                    "status": "draft",
+                },
+            ],
+            "wedding_plan_items": [
+                {
+                    "id": "i1",
+                    "wedding_plan_id": "p1",
+                    "service_id": "s1",
+                    "role": "địa điểm",
+                    "sort_order": 0,
+                    "quantity": 1,
+                    "unit_price": 20000000,
+                    "currency": "VND",
+                    "services": {"id": "s1", "name": "Sảnh cưới", "category": "venue", "vendor_id": "v1"},
+                },
+                {
+                    "id": "i2",
+                    "wedding_plan_id": "p1",
+                    "service_id": "s2",
+                    "role": "chụp ảnh",
+                    "sort_order": 1,
+                    "quantity": 1,
+                    "unit_price": 5000000,
+                    "currency": "VND",
+                    "services": {"id": "s2", "name": "Gói chụp ảnh", "category": "photo", "vendor_id": "v1"},
+                },
+            ],
+            "services": [
+                {"id": "s1", "vendor_id": "v1", "name": "Sảnh cưới", "category": "venue", "status": "active"},
+                {"id": "s2", "vendor_id": "v1", "name": "Gói chụp ảnh", "category": "photo", "status": "active"},
+            ],
+        }
+    )
+
+
+class TestWeddingPlanTools:
+    @pytest.mark.asyncio
+    async def test_list_wedding_plans_returns_only_active_and_allowlisted(
+        self,
+    ):
+        db = _plan_store()
+        result = await agent_tools.list_wedding_plans(db)
+        ids = [p["id"] for p in result["plans"]]
+        # p2 (25tr) cheaper than p1 (50tr) → price-ascending order; draft p3 hidden.
+        assert ids == ["p2", "p1"]
+        # Allowlist only — status and no PII, but also no extra columns.
+        assert all("status" not in p for p in result["plans"])
+        assert all("email" not in p for p in result["plans"])
+
+    @pytest.mark.asyncio
+    async def test_list_wedding_plans_filters_by_budget(self):
+        db = _plan_store()
+        result = await agent_tools.list_wedding_plans(db, max_budget=45000000)
+        assert [p["id"] for p in result["plans"]] == ["p2"]
+
+    @pytest.mark.asyncio
+    async def test_list_wedding_plans_filters_by_guest_count(self):
+        db = _plan_store()
+        result = await agent_tools.list_wedding_plans(db, min_guests=150)
+        # p1 reaches 180 guests; p2 only 120 → excluded.
+        assert [p["id"] for p in result["plans"]] == ["p1"]
+
+    @pytest.mark.asyncio
+    async def test_list_wedding_plans_empty_when_nothing_matches(self):
+        db = _plan_store()
+        result = await agent_tools.list_wedding_plans(db, max_budget=1000000)
+        assert result["plans"] == []
+        assert result["count"] == 0
+
+    @pytest.mark.asyncio
+    async def test_get_wedding_plan_returns_plan_and_resolved_items(self):
+        db = _plan_store()
+        result = await agent_tools.get_wedding_plan(db, plan_id="p1")
+        assert result["found"] is True
+        assert result["plan"]["id"] == "p1"
+        item_roles = [i["role"] for i in result["items"]]
+        assert item_roles == ["địa điểm", "chụp ảnh"]
+        # Item services are projected, never include PII.
+        assert all("email" not in i for i in result["items"])
+        assert result["items"][0]["service"]["name"] == "Sảnh cưới"
+
+    @pytest.mark.asyncio
+    async def test_get_wedding_plan_unknown_id_reports_not_found(self):
+        db = _plan_store()
+        result = await agent_tools.get_wedding_plan(db, plan_id="nope")
+        assert result["found"] is False
+
+    @pytest.mark.asyncio
+    async def test_plan_tools_are_registered_for_dispatch(self):
+        for name in ("list_wedding_plans", "get_wedding_plan"):
+            assert name in agent_tools._DISPATCH
+
+    @pytest.mark.asyncio
+    async def test_plan_tools_are_in_tool_specs(self):
+        names = {t["function"]["name"] for t in agent_tools.TOOL_SPECS}
+        assert "list_wedding_plans" in names
+        assert "get_wedding_plan" in names
+
+
+class TestWeddingPlanCardCollection:
+    """Plan rows and plan item services map onto the shared card shape."""
+
+    def _collect(self, *results: dict) -> list[dict]:
+        sink: list[dict] = []
+        seen: set[str] = set()
+        for result in results:
+            ai_text._collect_retrieved_services(result, sink, seen)
+        return sink
+
+    def test_list_result_maps_plan_to_card_shape(self):
+        rows = self._collect(
+            {
+                "count": 1,
+                "plans": [
+                    {
+                        "id": "p1",
+                        "name": "Gói A",
+                        "style": "Cổ Điển",
+                        "min_budget": 50000000,
+                        "currency": "VND",
+                        "cover_image_url": "https://x/p.jpg",
+                    }
+                ],
+            }
+        )
+        assert rows == [
+            {
+                "id": "p1",
+                "name": "Gói A",
+                "category": "Cổ Điển",
+                "base_price": 50000000,
+                "currency": "VND",
+                "thumbnail_url": "https://x/p.jpg",
+            }
+        ]
+
+    def test_detail_result_collects_item_services(self):
+        rows = self._collect(
+            {
+                "found": True,
+                "plan": {"id": "p1", "name": "Gói A"},
+                "items": [
+                    {
+                        "role": "địa điểm",
+                        "unit_price": 20000000,
+                        "currency": "VND",
+                        "service": {"id": "s1", "name": "Sảnh cưới", "category": "venue", "vendor_id": "v1"},
+                    }
+                ],
+            }
+        )
+        assert rows == [
+            {
+                "id": "s1",
+                "name": "Sảnh cưới",
+                "category": "venue",
+                "base_price": 20000000,
+                "currency": "VND",
+                "vendor_id": "v1",
+            }
+        ]
+
+    def test_found_false_contributes_nothing(self):
+        rows = self._collect({"found": False, "reason": "no such plan"})
+        assert rows == []
+
+
+class TestGetUserPlan:
+    """The read-only accepted-plan recall tool (feature 003)."""
+
+    def _store(self, rows=None) -> FakeSupabase:
+        default = [
+            {
+                "user_id": "u1",
+                "item_type": "service",
+                "service_id": "s1",
+                "plan_id": None,
+                "category": "Venue",
+                "service_name": "Sảnh cưới Hoàng Gia",
+                "service_price": 20000000,
+                "accepted_at": "2026-09-01T00:00:00+00:00",
+            },
+            {
+                "user_id": "u1",
+                "item_type": "service",
+                "service_id": "s2",
+                "plan_id": None,
+                "category": "Photo",
+                "service_name": "Gói chụp ảnh",
+                "service_price": 5000000,
+                "accepted_at": "2026-09-01T00:00:00+00:00",
+            },
+            {
+                "user_id": "u1",
+                "item_type": "plan",
+                "plan_id": "p1",
+                "service_id": None,
+                "category": "Cổ Điển",
+                "plan_name": "Gói Trọn Gói Cổ Điển",
+                "accepted_at": "2026-09-01T00:00:00+00:00",
+            },
+        ]
+        return FakeSupabase(rows={"v_user_accepted_plan": rows if rows is not None else default})
+
+    @pytest.mark.asyncio
+    async def test_only_allowlisted_fields_surface(self):
+        db = self._store()
+        result = await agent_tools.get_user_plan(db)
+        assert result["found"] is True
+        items = [i for g in result["groups"] for i in g["items"]]
+        flat = [k for i in items for k in i.keys()]
+        assert "vendor_id" not in flat and "email" not in flat
+        assert all(k in agent_tools.ACCEPTED_PLAN_PUBLIC_FIELDS for k in flat)
+
+    @pytest.mark.asyncio
+    async def test_groups_by_category_with_counts(self):
+        db = self._store()
+        result = await agent_tools.get_user_plan(db)
+        by_cat = {g["category"]: g["count"] for g in result["groups"]}
+        assert by_cat == {"Venue": 1, "Photo": 1, "Cổ Điển": 1}
+
+    @pytest.mark.asyncio
+    async def test_single_category_filter(self):
+        db = self._store()
+        result = await agent_tools.get_user_plan(db, category="photo")
+        assert [g["category"] for g in result["groups"]] == ["Photo"]
+        assert result["count"] == 1
+
+    @pytest.mark.asyncio
+    async def test_non_accepted_rows_are_excluded(self):
+        # A declined/removed row present in the table must not surface: the view
+        # contract is `accepted` only, so the tool trusts it and the fake mirrors it.
+        db = FakeSupabase(
+            rows={
+                "user_plan_items": [
+                    {"user_id": "u1", "status": "declined", "category": "Venue"}
+                ],
+                "v_user_accepted_plan": [],
+            }
+        )
+        result = await agent_tools.get_user_plan(db)
+        assert result["found"] is False
+        assert result["groups"] == []
+        assert result["count"] == 0
+
+    @pytest.mark.asyncio
+    async def test_empty_accepted_plan_reports_honest_empty_state(self):
+        db = self._store(rows=[])
+        result = await agent_tools.get_user_plan(db)
+        assert result["found"] is False
+        assert result["groups"] == []
+
+    def test_tool_registered_for_dispatch(self):
+        assert "get_user_plan" in agent_tools._DISPATCH
+
+    def test_tool_in_specs(self):
+        names = {t["function"]["name"] for t in agent_tools.TOOL_SPECS}
+        assert "get_user_plan" in names

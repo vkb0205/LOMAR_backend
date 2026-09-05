@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 
@@ -58,7 +58,7 @@ def test_thread_create_and_assistant_is_server_created(client, app):
     created = client.post("/api/v1/chat/threads", json={"contextType": "consultant"}, headers=_auth())
     assert created.status_code == 201
     thread_id = created.json()["threadId"]
-    with patch("app.services.ai_text.generate_chat_reply", return_value="server text"):
+    with patch("chatbot.runtime.generate_chat_reply", return_value="server text"):
         response = client.post(
             f"/api/v1/chat/threads/{thread_id}/messages",
             # A client attempting to dictate the assistant turn must not win:
@@ -91,7 +91,7 @@ def test_empty_message_is_422(client, app):
 
 def test_exchange_persists_user_and_server_assistant(client, app):
     fake = _install(app)
-    with patch("app.services.ai_text.generate_chat_reply", return_value="AI reply"):
+    with patch("chatbot.runtime.generate_chat_reply", return_value="AI reply"):
         response = client.post(
             f"/api/v1/chat/threads/{THREAD_ID}/messages", json={"content": "hello"}, headers=_auth()
         )
@@ -117,10 +117,108 @@ def test_suggested_service_passthrough(client, app):
 
 def test_persistence_failure_is_sanitized_503(client, app):
     _install(app, failures={"chat_messages": httpx.ConnectError("private db detail")})
-    with patch("app.services.ai_text.generate_chat_reply", return_value="AI reply"):
+    with patch("chatbot.runtime.generate_chat_reply", return_value="AI reply"):
         response = client.post(
             f"/api/v1/chat/threads/{THREAD_ID}/messages", json={"content": "hello"}, headers=_auth()
         )
     assert response.status_code == 503
     assert response.json()["error"]["code"] == "database_unavailable"
     assert "private db detail" not in response.text
+
+
+def test_consult_is_public_and_returns_session(client, app):
+    _install(app)
+    with patch(
+        "chatbot.runtime.run_consultant_agent",
+        new=AsyncMock(return_value=("xin chào", [], [])),
+    ):
+        response = client.post("/api/v1/chat/consult", json={"message": "chào bạn"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["reply"] == "xin chào"
+    assert body["sessionId"]
+    assert body.get("degraded") is False
+
+
+def test_consult_returns_service_cards(client, app):
+    _install(app)
+    services = [
+        {
+            "id": "svc-1",
+            "name": "Gói chụp ảnh",
+            "category": "photo",
+            "base_price": 5_000_000,
+            "currency": "VND",
+            "thumbnail_url": "https://example.test/t.jpg",
+            "vendor_id": "ven-1",
+        }
+    ]
+    with patch(
+        "chatbot.runtime.run_consultant_agent",
+        new=AsyncMock(return_value=("Đây là gợi ý", ["search_services"], services)),
+    ):
+        response = client.post("/api/v1/chat/consult", json={"message": "tìm studio"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["toolsUsed"] == ["search_services"]
+    assert body["retrievedServices"] == [
+        {
+            "id": "svc-1",
+            "name": "Gói chụp ảnh",
+            "category": "photo",
+            "basePrice": 5_000_000,
+            "currency": "VND",
+            "thumbnailUrl": "https://example.test/t.jpg",
+            "vendorId": "ven-1",
+        }
+    ]
+
+
+def test_consult_returns_wedding_plan_cards(client, app):
+    """Plan cards flow through the same retrievedServices shape as services."""
+    _install(app)
+    plans = [
+        {
+            "id": "plan-1",
+            "name": "Gói Cổ Điển",
+            "category": "Cổ Điển",
+            "base_price": 50_000_000,
+            "currency": "VND",
+            "thumbnail_url": "https://example.test/plan.jpg",
+        }
+    ]
+    with patch(
+        "chatbot.runtime.run_consultant_agent",
+        new=AsyncMock(return_value=("Đây là gói phù hợp", ["list_wedding_plans"], plans)),
+    ):
+        response = client.post(
+            "/api/v1/chat/consult", json={"message": "gói cưới tầm 80 triệu"}
+        )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["toolsUsed"] == ["list_wedding_plans"]
+    assert body["retrievedServices"] == [
+        {
+            "id": "plan-1",
+            "name": "Gói Cổ Điển",
+            "category": "Cổ Điển",
+            "basePrice": 50_000_000,
+            "currency": "VND",
+            "thumbnailUrl": "https://example.test/plan.jpg",
+            "vendorId": None,
+        }
+    ]
+
+
+def test_consult_empty_reply_is_degraded_fallback(client, app):
+    _install(app)
+    with patch(
+        "chatbot.runtime.run_consultant_agent",
+        new=AsyncMock(return_value=("", [], [])),
+    ):
+        response = client.post("/api/v1/chat/consult", json={"message": "???"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["degraded"] is True
+    assert body["reply"]
+    assert "Khám phá" in body["reply"] or "mình" in body["reply"].lower()

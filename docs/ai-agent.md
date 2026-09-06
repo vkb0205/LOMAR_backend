@@ -8,7 +8,7 @@ local development use the same implementations:
 | `app/agents/chatbot/` | Couple wedding consultant — system prompt, catalog tools, OpenAI-compatible runtime, session memory |
 | `app/agents/business_intelligence/` | Vendor/admin BI — DB-backed demand proxies (not GMV) |
 
-HTTP stays in `app/routers/` (`chat.py`, `business_intelligence.py`). Thin
+HTTP stays in `app/routers/` (`user/chat.py`, `business/business_intelligence.py`). Thin
 compatibility shims remain under `app/services/` so imports like
 `app.services.ai_text` still resolve to the vendored runtime.
 
@@ -236,7 +236,7 @@ Persistence: `bi_agent_definitions`, `bi_agent_runs`, `bi_activities`,
 RPC `get_vendor_bi_metrics`; the service also computes metrics in Python so
 tests work without RPC.
 
-Auth: centralized `require_business` (fresh `profiles.role` lookup). Repository
+Auth: centralized vendor-tier `require_vendor` (fresh `profiles.role` lookup). Repository
 scope: admin → platform (`vendor_id` null); vendor → owned vendor.
 
 ### Routes

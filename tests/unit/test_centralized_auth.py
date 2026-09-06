@@ -283,7 +283,7 @@ class TestAuthenticatedUserExtraction:
         assert resp.status_code == 200
         assert resp.json()["role"] == ""
 
-    def test_role_resolved_from_db_by_require_user(self):
+    def test_role_resolved_from_db_for_authenticated_user(self):
         """get_current_user resolves the authoritative LOMAR role from the DB."""
         token = _token(sub="user-abc")
         resp = client.get("/protected", headers={"authorization": _bearer(token)})

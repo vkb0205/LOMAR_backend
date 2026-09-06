@@ -53,7 +53,7 @@ Rationale: `LOMAR_backend/` contains no application code in this tree
   raises the `database_unavailable` error from T004 (research.md R2, R5).
 - [x] **T008** Create `app/deps/auth.py`: verify the Supabase JWT with
   `SUPABASE_JWT_SECRET` (HS256, `aud`/`exp` checked); `current_user` extracts
-  `sub`; `require_user` rejects anonymous with `401`; `require_admin` performs
+  `sub`; `require_customer` rejects anonymous with `401`; `require_admin` performs
   a **fresh backend lookup** of `profiles.role == 'admin'` and never trusts a
   JWT role claim (research.md R6, FR-005). Per plan §Complexity Tracking,
   `/api/v1/me/*` and `/api/v1/admin/*` reject anonymous callers regardless of

@@ -1,4 +1,4 @@
-"""Endpoints reserved for the exact LOMAR ``customer`` role."""
+"""Endpoints available from the LOMAR ``customer`` tier upward."""
 
 from typing import Annotated
 

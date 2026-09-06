@@ -1,4 +1,4 @@
-"""Compatibility shim — implementation lives in sibling ``business_intelligence.service`` package."""
+"""Compatibility shim for the vendored ``business_intelligence.service`` package."""
 
 from business_intelligence.service import *  # noqa: F403
 from business_intelligence.service import __dict__ as _impl

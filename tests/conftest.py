@@ -44,7 +44,7 @@ TEST_SECRET = "test-supabase-jwt-secret"
 TEST_AUDIENCE = "authenticated"
 TEST_USER_ID = "11111111-1111-1111-1111-111111111111"
 TEST_USER_B_ID = "33333333-3333-3333-3333-333333333333"
-TEST_BUSINESS_ID = "44444444-4444-4444-4444-444444444444"
+TEST_VENDOR_USER_ID = "44444444-4444-4444-4444-444444444444"
 TEST_ADMIN_ID = "22222222-2222-2222-2222-222222222222"
 
 
@@ -103,7 +103,7 @@ def app() -> FastAPI:
             "profiles": [
                 {"id": TEST_USER_ID, "role": "customer"},
                 {"id": TEST_USER_B_ID, "role": "customer"},
-                {"id": TEST_BUSINESS_ID, "role": "vendor"},
+                {"id": TEST_VENDOR_USER_ID, "role": "vendor"},
                 {"id": TEST_ADMIN_ID, "role": "admin"},
             ]
         }
@@ -214,8 +214,8 @@ def admin_token() -> str:
 
 
 @pytest.fixture()
-def business_token() -> str:
-    return factory_token(TEST_BUSINESS_ID, role="vendor")
+def vendor_token() -> str:
+    return factory_token(TEST_VENDOR_USER_ID, role="vendor")
 
 
 @pytest.fixture()

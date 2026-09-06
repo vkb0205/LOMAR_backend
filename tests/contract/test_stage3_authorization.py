@@ -3,8 +3,8 @@
 Verifies the four-tier security model:
 
   /public/*     — no auth required
-  /user/*       — authenticated + role=customer
-  /business/*   — authenticated + role=vendor
+  /user/*       — authenticated + minimum role=customer
+  /business/*   — authenticated + minimum role=vendor
   /admin/*      — authenticated + role=admin
 
 Security flow per request:
@@ -20,8 +20,8 @@ from __future__ import annotations
 
 from tests.conftest import (
     TEST_ADMIN_ID,
-    TEST_BUSINESS_ID,
     TEST_USER_ID,
+    TEST_VENDOR_USER_ID,
     factory_token,
 )
 from tests.fakes import FakeSupabase
@@ -31,16 +31,16 @@ def _store():
     return {
         "profiles": [
             {"id": TEST_USER_ID, "role": "customer", "full_name": "User"},
-            {"id": TEST_BUSINESS_ID, "role": "vendor", "full_name": "Biz"},
+            {"id": TEST_VENDOR_USER_ID, "role": "vendor", "full_name": "Vendor"},
             {"id": TEST_ADMIN_ID, "role": "admin", "full_name": "Admin"},
         ],
         "journey_tasks": [],
         "user_journey_tasks": [],
         "vouchers": [],
         "user_vouchers": [],
-        "services": [{"id": "service-1", "vendor_id": "vendor-business", "name": "Photo", "status": "active"}],
+        "services": [{"id": "service-1", "vendor_id": "vendor-owned", "name": "Photo", "status": "active"}],
         "service_requests": [],
-        "vendors": [{"id": "vendor-business", "owner_id": TEST_BUSINESS_ID, "status": "active"}],
+        "vendors": [{"id": "vendor-owned", "owner_id": TEST_VENDOR_USER_ID, "status": "active"}],
         "posts": [],
         "post_comments": [],
     }
@@ -136,41 +136,49 @@ class TestUserDeniedAdmin:
 
 
 # ---------------------------------------------------------------------------
-# 5. business accessing /business → allowed
+# 5. vendor inherits customer routes and accesses /business
 # ---------------------------------------------------------------------------
 
 
-class TestBusinessAccess:
-    def test_business_reads_services_allowed(self, client, app):
+class TestVendorAccess:
+    def test_vendor_inherits_customer_routes(self, client, app):
+        _install(app)
+        resp = client.get(
+            "/api/v1/me/dashboard",
+            headers=_auth(TEST_VENDOR_USER_ID, role="customer"),
+        )
+        assert resp.status_code == 200
+
+    def test_vendor_reads_services_allowed(self, client, app):
         _install(app)
         resp = client.get(
             "/api/v1/business/services",
-            headers=_auth(TEST_BUSINESS_ID, role="vendor"),
+            headers=_auth(TEST_VENDOR_USER_ID, role="vendor"),
         )
         assert resp.status_code == 200
         assert len(resp.json()) == 1
         assert resp.json()[0]["id"] == "service-1"
 
-    def test_business_reads_service_requests_allowed(self, client, app):
+    def test_vendor_reads_service_requests_allowed(self, client, app):
         _install(app)
         resp = client.get(
             "/api/v1/business/service-requests",
-            headers=_auth(TEST_BUSINESS_ID, role="vendor"),
+            headers=_auth(TEST_VENDOR_USER_ID, role="vendor"),
         )
         assert resp.status_code == 200
 
 
 # ---------------------------------------------------------------------------
-# 6. business accessing /admin → 403
+# 6. vendor accessing /admin → 403
 # ---------------------------------------------------------------------------
 
 
-class TestBusinessDeniedAdmin:
-    def test_business_accesses_admin_returns_403(self, client, app):
+class TestVendorDeniedAdmin:
+    def test_vendor_accesses_admin_returns_403(self, client, app):
         _install(app)
         resp = client.get(
             "/api/v1/admin/metrics",
-            headers=_auth(TEST_BUSINESS_ID, role="vendor"),
+            headers=_auth(TEST_VENDOR_USER_ID, role="vendor"),
         )
         assert resp.status_code == 403
         assert resp.json()["error"]["code"] == "forbidden"
@@ -191,21 +199,21 @@ class TestAdminAccess:
         assert resp.status_code == 200
         assert resp.json()["users"] == 3
 
-    def test_admin_cannot_access_exact_business_routes(self, client, app):
+    def test_admin_inherits_vendor_routes(self, client, app):
         _install(app)
         resp = client.get(
             "/api/v1/business/services",
             headers=_auth(TEST_ADMIN_ID, role="admin"),
         )
-        assert resp.status_code == 403
+        assert resp.status_code == 200
 
-    def test_admin_cannot_access_exact_user_routes(self, client, app):
+    def test_admin_inherits_customer_routes(self, client, app):
         _install(app)
         resp = client.get(
             "/api/v1/me/dashboard",
             headers=_auth(TEST_ADMIN_ID, role="admin"),
         )
-        assert resp.status_code == 403
+        assert resp.status_code == 200
 
 
 # ---------------------------------------------------------------------------

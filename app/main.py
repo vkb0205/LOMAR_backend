@@ -1,7 +1,7 @@
 """LOMAR FastAPI application composition.
 
 Routes are assembled under ``app.routers`` into four explicit boundaries:
-public, user, business, and admin. Authentication and role authorization live
+public, customer, vendor, and admin. Authentication and role authorization live
 on FastAPI dependencies attached to those groups; middleware is reserved for
 cross-cutting request concerns.
 

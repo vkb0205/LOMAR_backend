@@ -7,7 +7,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends
 
 from app.auth.models import CurrentUser
-from app.auth.permissions import require_business
+from app.auth.permissions import require_vendor
 from app.deps.db import get_supabase
 from app.errors import NotFoundError
 from app.schemas.business_intelligence import (
@@ -21,14 +21,14 @@ from app.schemas.business_intelligence import (
     ReportCreateRequest,
     ReportCreateResponse,
 )
-from business_intelligence import service
+from app.agents.business_intelligence import service
 
 router = APIRouter(prefix="/business-intelligence", tags=["business-intelligence"])
 
 
 @router.get("/overview", response_model=BIOverviewResponse)
 async def get_overview(
-    user: Annotated[CurrentUser, Depends(require_business)],
+    user: Annotated[CurrentUser, Depends(require_vendor)],
     client: Any = Depends(get_supabase),
 ) -> BIOverviewResponse:
     data = await service.overview(client, user_id=user.id, role=user.role)
@@ -38,7 +38,7 @@ async def get_overview(
 @router.post("/agents/run", response_model=AgentRunResponse)
 async def run_agent(
     body: AgentRunRequest,
-    user: Annotated[CurrentUser, Depends(require_business)],
+    user: Annotated[CurrentUser, Depends(require_vendor)],
     client: Any = Depends(get_supabase),
 ) -> AgentRunResponse:
     try:
@@ -53,7 +53,7 @@ async def run_agent(
 @router.post("/reports", response_model=ReportCreateResponse)
 async def create_report(
     body: ReportCreateRequest,
-    user: Annotated[CurrentUser, Depends(require_business)],
+    user: Annotated[CurrentUser, Depends(require_vendor)],
     client: Any = Depends(get_supabase),
 ) -> ReportCreateResponse:
     report, activity = await service.create_report(
@@ -65,7 +65,7 @@ async def create_report(
 @router.post("/actions/preview", response_model=ActionPreviewResponse)
 async def preview_action(
     body: ActionPreviewRequest,
-    user: Annotated[CurrentUser, Depends(require_business)],
+    user: Annotated[CurrentUser, Depends(require_vendor)],
     client: Any = Depends(get_supabase),
 ) -> ActionPreviewResponse:
     recommendation = await service.get_recommendation(
@@ -86,7 +86,7 @@ async def preview_action(
 @router.post("/chat", response_model=BIChatResponse)
 async def chat(
     body: BIChatRequest,
-    user: Annotated[CurrentUser, Depends(require_business)],
+    user: Annotated[CurrentUser, Depends(require_vendor)],
     client: Any = Depends(get_supabase),
 ) -> BIChatResponse:
     data = await service.overview(client, user_id=user.id, role=user.role)

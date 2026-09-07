@@ -131,3 +131,16 @@ async def get_supabase_admin(request: Request) -> AsyncClient:
 def unwrap(result: Any) -> Any:
     """Return response data, or the original value for test adapters."""
     return getattr(result, "data", result)
+
+
+def unwrap_one(result: Any) -> Any:
+    """Return the first row from a one-row mutation response.
+
+    Current ``supabase-py`` mutation builders return a list even when one row
+    was inserted or updated.  Unlike SELECT builders, they do not expose
+    ``single()``, so repositories normalize that response shape here.
+    """
+    data = unwrap(result)
+    if isinstance(data, list):
+        return data[0] if data else None
+    return data

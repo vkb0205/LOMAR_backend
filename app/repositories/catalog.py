@@ -47,7 +47,7 @@ async def get_vendors(client: AsyncClient, vendor_ids: list[str]) -> list[dict[s
         return []
     result = await run_db(
         lambda: client.table("vendors")
-        .select("id,name,image_url,address,city")
+        .select("id,name,image_url,address")
         .in_("id", unique_ids)
         .eq("status", VENDOR_VISIBLE_STATUS)
         .execute()

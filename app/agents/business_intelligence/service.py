@@ -20,7 +20,6 @@ _METRIC_LABELS = [
     ("Khách quan tâm", "interestedCustomers", "previousInterestedCustomers"),
 ]
 
-
 def _fmt(value: float | int) -> str:
     if isinstance(value, float):
         return f"{value:,.0f}"

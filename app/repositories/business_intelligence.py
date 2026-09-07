@@ -13,7 +13,7 @@ from typing import Any
 
 from supabase import AsyncClient
 
-from app.deps.db import run_db, unwrap
+from app.deps.db import run_db, unwrap, unwrap_one
 
 DEFAULT_AGENT_DEFINITIONS: list[dict[str, Any]] = [
     {
@@ -192,9 +192,9 @@ async def insert_agent_run(
         "finished_at": now if status in ("completed", "failed", "approval_required") else None,
     }
     result = await run_db(
-        lambda: client.table("bi_agent_runs").insert(payload).select("*").single().execute()
+        lambda: client.table("bi_agent_runs").insert(payload).select("*").execute()
     )
-    return unwrap(result) or payload
+    return unwrap_one(result) or payload
 
 
 async def insert_activity(
@@ -216,9 +216,9 @@ async def insert_activity(
         "created_by": created_by,
     }
     result = await run_db(
-        lambda: client.table("bi_activities").insert(payload).select("*").single().execute()
+        lambda: client.table("bi_activities").insert(payload).select("*").execute()
     )
-    return unwrap(result) or payload
+    return unwrap_one(result) or payload
 
 
 async def insert_report(
@@ -242,9 +242,9 @@ async def insert_report(
         "created_by": created_by,
     }
     result = await run_db(
-        lambda: client.table("bi_reports").insert(row).select("*").single().execute()
+        lambda: client.table("bi_reports").insert(row).select("*").execute()
     )
-    return unwrap(result) or row
+    return unwrap_one(result) or row
 
 
 async def fetch_metrics_rpc(

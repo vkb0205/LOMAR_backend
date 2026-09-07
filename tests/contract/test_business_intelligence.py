@@ -133,6 +133,49 @@ def test_bi_overview_admin_ok(client, app):
     assert len(body["metrics"]) == 4
 
 
+def test_bi_overview_exposes_runtime_activity_and_report_values(client, app):
+    fake = _install(app)
+    fake.rows["bi_activities"] = [
+        {
+            "id": "runtime-action",
+            "vendor_id": TEST_VENDOR_ID,
+            "title": "Action previewed",
+            "detail": "Runtime activity",
+            "kind": "action",
+            "occurred_at": "2026-08-01T00:00:00+00:00",
+        },
+        {
+            "id": "runtime-system",
+            "vendor_id": TEST_VENDOR_ID,
+            "title": "Lead received",
+            "detail": "Runtime system activity",
+            "kind": "system",
+            "occurred_at": "2026-08-02T00:00:00+00:00",
+        },
+    ]
+    fake.rows["bi_reports"] = [
+        {
+            "id": "runtime-report",
+            "vendor_id": TEST_VENDOR_ID,
+            "title": "Generating report",
+            "period": "Last 7 days",
+            "status": "generating",
+            "summary": "Runtime status",
+            "created_at": "2026-08-01T00:00:00+00:00",
+        }
+    ]
+
+    response = client.get(
+        "/api/v1/business-intelligence/overview",
+        headers=_auth(TEST_VENDOR_ADMIN_ID, role="vendor"),
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert {activity["kind"] for activity in body["activities"]} == {"action", "system"}
+    assert body["reports"][0]["status"] == "generating"
+
+
 def test_bi_run_agent_and_report(client, app):
     fake = _install(app)
     headers = _auth(TEST_VENDOR_ADMIN_ID, role="vendor")

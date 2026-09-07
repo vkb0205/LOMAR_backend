@@ -18,7 +18,7 @@ from typing import Any
 
 from supabase import AsyncClient
 
-from app.deps.db import run_db, unwrap
+from app.deps.db import run_db, unwrap, unwrap_one
 
 _COUNT_TABLES = (
     "profiles",
@@ -68,8 +68,8 @@ async def list_profiles(client: AsyncClient, search: str | None = None) -> list[
 
 async def update_row(client: AsyncClient, table: str, row_id: str, payload: dict[str, Any]) -> dict[str, Any] | None:
     payload = {**payload, "updated_at": datetime.now(timezone.utc).isoformat()}
-    result = await run_db(lambda: client.table(table).update(payload).eq("id", row_id).select("*").single().execute())
-    return unwrap(result)
+    result = await run_db(lambda: client.table(table).update(payload).eq("id", row_id).select("*").execute())
+    return unwrap_one(result)
 
 
 async def delete_row(client: AsyncClient, table: str, row_id: str) -> None:
@@ -77,8 +77,8 @@ async def delete_row(client: AsyncClient, table: str, row_id: str) -> None:
 
 
 async def insert_row(client: AsyncClient, table: str, payload: dict[str, Any]) -> dict[str, Any]:
-    result = await run_db(lambda: client.table(table).insert(payload).select("*").single().execute())
-    return unwrap(result) or payload
+    result = await run_db(lambda: client.table(table).insert(payload).select("*").execute())
+    return unwrap_one(result) or payload
 
 
 async def get_row(client: AsyncClient, table: str, row_id: str) -> dict[str, Any] | None:

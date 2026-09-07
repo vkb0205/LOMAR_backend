@@ -64,7 +64,6 @@ VENDOR_PUBLIC_FIELDS: frozenset[str] = frozenset(
         "category",
         "description",
         "address",
-        "city",
         "image_url",
         "rating_avg",
         "rating_count",
@@ -301,11 +300,10 @@ async def search_vendors(
     *,
     query: str | None = None,
     category: str | None = None,
-    city: str | None = None,
     min_rating: float | None = None,
     limit: int | None = None,
 ) -> dict[str, Any]:
-    """Find active vendors, optionally filtered by city, category or rating."""
+    """Find active vendors, optionally filtered by category or rating."""
     capped = min(limit or _row_limit(), _row_limit())
 
     def _build() -> Any:
@@ -319,8 +317,6 @@ async def search_vendors(
             safe_category = category.strip().replace("%", r"\%").replace("_", r"\_")
             if safe_category:
                 q = q.ilike("category", safe_category)
-        if city:
-            q = q.ilike("city", f"%{city}%")
         if min_rating is not None:
             q = q.gte("rating_avg", min_rating)
         if query:
@@ -631,7 +627,7 @@ TOOL_SPECS: list[dict[str, Any]] = [
         "function": {
             "name": "search_vendors",
             "description": (
-                "Search active vendors by keyword, category, city or minimum "
+                "Search active vendors by keyword, category or minimum "
                 "average rating. Use when the user asks about providers/studios "
                 "rather than a specific service."
             ),
@@ -640,7 +636,6 @@ TOOL_SPECS: list[dict[str, Any]] = [
                 "properties": {
                     "query": {"type": "string", "description": "Free-text keywords for vendor name/description."},
                     "category": {"type": "string", "description": "Exact vendor category."},
-                    "city": {"type": "string", "description": "City name, partial match allowed."},
                     "min_rating": {
                         "type": "number",
                         "description": "Minimum average rating, 0-5.",

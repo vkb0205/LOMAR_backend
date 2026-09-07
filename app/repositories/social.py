@@ -7,7 +7,7 @@ from typing import Any
 
 from supabase import AsyncClient
 
-from app.deps.db import run_db, unwrap
+from app.deps.db import run_db, unwrap, unwrap_one
 
 
 async def _select(client: AsyncClient, table: str, columns: str = "*") -> list[dict[str, Any]]:
@@ -82,13 +82,13 @@ async def create_post(client: AsyncClient, user_id: str, payload: dict[str, Any]
         "created_at": datetime.now(timezone.utc).isoformat(),
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
-    result = await run_db(lambda: client.table("posts").insert(row).select("*").single().execute())
-    return unwrap(result) or row
+    result = await run_db(lambda: client.table("posts").insert(row).select("*").execute())
+    return unwrap_one(result) or row
 
 
 async def update_post(client: AsyncClient, post_id: str, payload: dict[str, Any]) -> dict[str, Any] | None:
-    result = await run_db(lambda: client.table("posts").update(payload).eq("id", post_id).select("*").single().execute())
-    return unwrap(result)
+    result = await run_db(lambda: client.table("posts").update(payload).eq("id", post_id).select("*").execute())
+    return unwrap_one(result)
 
 
 async def delete_by_id(client: AsyncClient, table: str, column: str, value: str) -> None:
@@ -105,8 +105,8 @@ async def create_comment(client: AsyncClient, user_id: str, post_id: str, payloa
         "created_at": datetime.now(timezone.utc).isoformat(),
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
-    result = await run_db(lambda: client.table("post_comments").insert(row).select("*").single().execute())
-    return unwrap(result) or row
+    result = await run_db(lambda: client.table("post_comments").insert(row).select("*").execute())
+    return unwrap_one(result) or row
 
 
 async def update_comment(client: AsyncClient, comment_id: str, content: str) -> dict[str, Any] | None:
@@ -115,10 +115,9 @@ async def update_comment(client: AsyncClient, comment_id: str, content: str) -> 
         .update({"content": content, "updated_at": datetime.now(timezone.utc).isoformat()})
         .eq("id", comment_id)
         .select("*")
-        .single()
         .execute()
     )
-    return unwrap(result)
+    return unwrap_one(result)
 
 
 async def post_exists(client: AsyncClient, post_id: str) -> bool:

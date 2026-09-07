@@ -356,7 +356,7 @@ def _collect_retrieved_services(
             if not isinstance(identifier, str) or identifier in seen:
                 continue
             seen.add(identifier)
-            address = row.get("address") or row.get("city")
+            address = row.get("address")
             sink.append(
                 {
                     "id": identifier,

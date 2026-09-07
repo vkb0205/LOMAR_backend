@@ -106,7 +106,7 @@ async def _with_vendor_details(client: Any, rows: list[dict[str, Any]]) -> list[
         if vendor:
             row.setdefault("vendor_name", vendor.get("name"))
             row.setdefault("vendor_image_url", vendor.get("image_url"))
-            row.setdefault("vendor_address", vendor.get("address") or vendor.get("city"))
+            row.setdefault("vendor_address", vendor.get("address"))
         enriched.append(row)
     return enriched
 

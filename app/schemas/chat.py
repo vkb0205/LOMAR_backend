@@ -20,9 +20,19 @@ class ChatMessagesResponse(BaseModel):
 
 
 class ChatThreadCreate(BaseModel):
-    contextType: str = Field(default="consultant")
+    contextType: str = Field(default="general")
     vendorId: str | None = None
     serviceId: str | None = None
+
+
+class ChatThreadSummary(BaseModel):
+    id: str
+    contextType: str | None = None
+    updatedAt: str | None = None
+
+
+class ChatThreadsResponse(BaseModel):
+    threads: list[ChatThreadSummary]
 
 
 class ChatThreadCreated(BaseModel):
@@ -37,6 +47,7 @@ class ChatExchange(BaseModel):
     userMessage: ChatMessage
     assistantMessage: ChatMessage
     persisted: bool = True
+    retrievedServices: list[RetrievedServiceCard] = Field(default_factory=list)
 
 
 class ConsultHistoryMessage(BaseModel):
@@ -69,3 +80,4 @@ class ConsultResponse(BaseModel):
     retrievedServices: list[RetrievedServiceCard] = Field(default_factory=list)
     toolsUsed: list[str] = Field(default_factory=list)
     degraded: bool = False
+

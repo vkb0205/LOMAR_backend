@@ -15,14 +15,14 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Path, status
 
-from app.auth.models import CurrentUser
 from app.auth.dependencies import get_optional_user
+from app.auth.models import CurrentUser
 from app.auth.permissions import require_customer
 from app.deps.db import get_supabase
 from app.errors import DatabaseUnavailableError, NotFoundError
 from app.repositories import chat as repository
-from app.repositories.catalog import get_service
 from app.repositories import user_plan as user_plan_repository
+from app.repositories.catalog import get_service
 from app.schemas.chat import (
     ChatExchange,
     ChatMessage,
@@ -30,10 +30,12 @@ from app.schemas.chat import (
     ChatMessagesResponse,
     ChatThreadCreate,
     ChatThreadCreated,
+    ChatThreadsResponse,
     ConsultRequest,
     ConsultResponse,
     RetrievedServiceCard,
 )
+
 logger = logging.getLogger("app.chat")
 router = APIRouter(
     prefix="/chat",
@@ -117,16 +119,6 @@ def _build_extra_context(
     return "\n".join(parts) if parts else None
 
 
-async def _generate_reply(content: str) -> str:
-    """Generate an AI reply using the shared text-generation abstraction.
-
-    Delegates provider selection to the vendored `chatbot.runtime` package.
-    """
-    from chatbot.runtime import generate_chat_reply
-
-    return generate_chat_reply(content)
-
-
 @public_router.post("/consult", response_model=ConsultResponse)
 async def consult(
     body: ConsultRequest,
@@ -194,6 +186,25 @@ async def consult(
     )
 
 
+@router.get("/threads", response_model=ChatThreadsResponse)
+async def list_threads(
+    user: Annotated[CurrentUser, Depends(require_customer)],
+    client=Depends(get_supabase),
+    context_type: str | None = None,
+) -> ChatThreadsResponse:
+    rows = await repository.list_threads(client, user.id, context_type)
+    return ChatThreadsResponse(
+        threads=[
+            {
+                "id": str(row.get("id", "")),
+                "contextType": row.get("context_type"),
+                "updatedAt": str(row.get("updated_at") or ""),
+            }
+            for row in rows
+        ]
+    )
+
+
 @router.post("/threads", status_code=status.HTTP_201_CREATED, response_model=ChatThreadCreated)
 async def create_thread(
     body: ChatThreadCreate,
@@ -225,7 +236,31 @@ async def send_message(
     user_row = await repository.add_message(
         client, thread_id=thread_id, user_id=user.id, role="user", content=body.content
     )
-    reply = await _generate_reply(body.content)
+
+    # Replay the thread so the tool-using consultant agent has context.
+    rows = await repository.list_messages(client, thread_id, user.id)
+    history = [
+        {"role": row.get("role", "user"), "content": row.get("content") or ""}
+        for row in rows
+        if row.get("content")
+    ]
+
+    # FR-008: inject the caller's accepted-plan summary as extra context.
+    plan_summary = await user_plan_repository.accepted_plan_summary(client, user.id)
+    extra_context = _build_extra_context(
+        path=None, surface=None, plan_summary=plan_summary
+    )
+
+    from chatbot.runtime import run_consultant_agent, sanitize_history
+    reply, _tools_used, retrieved = await run_consultant_agent(
+        body.content,
+        db=client,
+        history=sanitize_history(history),
+        extra_context=extra_context,
+    )
+    if not (reply or "").strip():
+        reply = _CONSULT_EMPTY_FALLBACK
+
     try:
         assistant_row = await repository.add_message(
             client, thread_id=thread_id, user_id=user.id, role="assistant", content=reply
@@ -233,7 +268,7 @@ async def send_message(
     except DatabaseUnavailableError:
         # The framework's standard envelope cannot carry arbitrary success data;
         # this exception is handled by the global 503 path. The route's
-        # `ChatExchange` shape remains documented for adapters that choose to
+        # ChatExchange shape remains documented for adapters that choose to
         # return a mixed response instead.
         logger.warning("chat_persistence_failed thread_id=%s", thread_id)
         raise
@@ -241,6 +276,7 @@ async def send_message(
         userMessage=_message(user_row),
         assistantMessage=_message(assistant_row),
         persisted=True,
+        retrievedServices=[card for row in retrieved if (card := _service_card(row)) is not None],
     )
 
 

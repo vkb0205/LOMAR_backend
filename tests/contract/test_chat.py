@@ -20,7 +20,7 @@ def _store():
             {"id": TEST_USER_ID, "role": "customer"},
             {"id": TEST_USER_B_ID, "role": "customer"},
         ],
-        "chat_threads": [{"id": THREAD_ID, "user_id": TEST_USER_ID, "context_type": "consultant"}],
+        "chat_threads": [{"id": THREAD_ID, "user_id": TEST_USER_ID, "context_type": "general"}],
         "chat_messages": [
             {"id": "m2", "thread_id": THREAD_ID, "user_id": TEST_USER_ID, "role": "assistant", "content": "second", "created_at": "2026-08-02T00:00:00+00:00"},
             {"id": "m1", "thread_id": THREAD_ID, "user_id": TEST_USER_ID, "role": "user", "content": "first", "created_at": "2026-08-01T00:00:00+00:00"},
@@ -53,12 +53,26 @@ def test_messages_are_owner_scoped_and_deterministically_ordered(client, app):
     assert client.get(f"/api/v1/chat/threads/{THREAD_ID}/messages", headers=_auth(TEST_USER_B_ID)).status_code == 404
 
 
+def test_list_threads_filters_by_context_and_owner(client, app):
+    _install(app)
+    response = client.get("/api/v1/chat/threads", params={"context_type": "general"}, headers=_auth())
+    assert response.status_code == 200
+    body = response.json()
+    assert [thread["id"] for thread in body["threads"]] == [THREAD_ID]
+    assert body["threads"][0]["contextType"] == "general"
+
+    # Other users cannot see this thread.
+    other = client.get("/api/v1/chat/threads", params={"context_type": "general"}, headers=_auth(TEST_USER_B_ID))
+    assert other.status_code == 200
+    assert other.json()["threads"] == []
+
+
 def test_thread_create_and_assistant_is_server_created(client, app):
     fake = _install(app)
-    created = client.post("/api/v1/chat/threads", json={"contextType": "consultant"}, headers=_auth())
+    created = client.post("/api/v1/chat/threads", json={"contextType": "general"}, headers=_auth())
     assert created.status_code == 201
     thread_id = created.json()["threadId"]
-    with patch("chatbot.runtime.generate_chat_reply", return_value="server text"):
+    with patch("chatbot.runtime.run_consultant_agent", new=AsyncMock(return_value=("server text", [], []))):
         response = client.post(
             f"/api/v1/chat/threads/{thread_id}/messages",
             # A client attempting to dictate the assistant turn must not win:
@@ -91,7 +105,7 @@ def test_empty_message_is_422(client, app):
 
 def test_exchange_persists_user_and_server_assistant(client, app):
     fake = _install(app)
-    with patch("chatbot.runtime.generate_chat_reply", return_value="AI reply"):
+    with patch("chatbot.runtime.run_consultant_agent", new=AsyncMock(return_value=("AI reply", [], []))):
         response = client.post(
             f"/api/v1/chat/threads/{THREAD_ID}/messages", json={"content": "hello"}, headers=_auth()
         )
@@ -117,7 +131,7 @@ def test_suggested_service_passthrough(client, app):
 
 def test_persistence_failure_is_sanitized_503(client, app):
     _install(app, failures={"chat_messages": httpx.ConnectError("private db detail")})
-    with patch("chatbot.runtime.generate_chat_reply", return_value="AI reply"):
+    with patch("chatbot.runtime.run_consultant_agent", new=AsyncMock(return_value=("AI reply", [], []))):
         response = client.post(
             f"/api/v1/chat/threads/{THREAD_ID}/messages", json={"content": "hello"}, headers=_auth()
         )
@@ -222,3 +236,5 @@ def test_consult_empty_reply_is_degraded_fallback(client, app):
     assert body["degraded"] is True
     assert body["reply"]
     assert "Khám phá" in body["reply"] or "mình" in body["reply"].lower()
+
+

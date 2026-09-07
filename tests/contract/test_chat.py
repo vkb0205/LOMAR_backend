@@ -10,7 +10,7 @@ import httpx
 from tests.conftest import TEST_USER_B_ID, TEST_USER_ID, factory_token
 from tests.fakes import FakeSupabase
 
-THREAD_ID = "thread-1"
+THREAD_ID = "55555555-5555-4555-8555-555555555555"
 SERVICE_ID = "service-1"
 
 
@@ -101,6 +101,19 @@ def test_empty_message_is_422(client, app):
         ).status_code
         == 422
     )
+
+
+def test_anonymous_session_id_is_rejected_before_database_query(client, app):
+    fake = _install(app)
+    response = client.get(
+        "/api/v1/chat/threads/7hSQlJcFwZIp7cEA-y8eUS4RINcG_-nE/messages",
+        headers={**_auth(), "Origin": "http://localhost:3000"},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "validation_error"
+    assert response.headers["access-control-allow-origin"] == "http://localhost:3000"
+    assert not any(table in {"chat_threads", "chat_messages"} for table, _ in fake.calls)
 
 
 def test_exchange_persists_user_and_server_assistant(client, app):

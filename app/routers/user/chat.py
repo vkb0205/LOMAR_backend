@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 from typing import Annotated, Any
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, Path, status
 
@@ -216,21 +217,22 @@ async def create_thread(
 
 @router.get("/threads/{threadId}/messages", response_model=ChatMessagesResponse)
 async def get_messages(
-    thread_id: Annotated[str, Path(alias="threadId", min_length=1)],
+    thread_id: Annotated[UUID, Path(alias="threadId")],
     user: Annotated[CurrentUser, Depends(require_customer)],
     client=Depends(get_supabase),
 ) -> ChatMessagesResponse:
-    rows = await repository.list_messages(client, thread_id, user.id)
+    rows = await repository.list_messages(client, str(thread_id), user.id)
     return ChatMessagesResponse(messages=[_message(row) for row in rows])
 
 
 @router.post("/threads/{threadId}/messages", response_model=ChatExchange)
 async def send_message(
-    thread_id: Annotated[str, Path(alias="threadId", min_length=1)],
+    thread_id: Annotated[UUID, Path(alias="threadId")],
     body: ChatMessageCreate,
     user: Annotated[CurrentUser, Depends(require_customer)],
     client=Depends(get_supabase),
 ) -> ChatExchange:
+    thread_id = str(thread_id)
     if await repository.get_thread(client, thread_id, user.id) is None:
         raise NotFoundError()
     user_row = await repository.add_message(
@@ -282,10 +284,11 @@ async def send_message(
 
 @router.get("/threads/{threadId}/suggested-service")
 async def suggested_service(
-    thread_id: Annotated[str, Path(alias="threadId", min_length=1)],
+    thread_id: Annotated[UUID, Path(alias="threadId")],
     user: Annotated[CurrentUser, Depends(require_customer)],
     client=Depends(get_supabase),
 ) -> dict[str, dict]:
+    thread_id = str(thread_id)
     if await repository.get_thread(client, thread_id, user.id) is None:
         raise NotFoundError()
     rows = await repository.list_messages(client, thread_id, user.id)

@@ -309,9 +309,16 @@ _CARD_FIELDS: tuple[str, ...] = (
     "name",
     "category",
     "base_price",
+    "max_price",
+    "price_unit",
+    "price_display",
     "currency",
     "thumbnail_url",
     "vendor_id",
+    "vendor_name",
+    "vendor_image_url",
+    "vendor_address",
+    "suggestion_type",
 )
 
 
@@ -332,12 +339,37 @@ def _collect_retrieved_services(
     - ``get_wedding_plan`` returns ``items``; each item's ``service`` is
       collected with the item's ``unit_price``/``currency`` as the card price.
 
-    Vendor rows are ignored: the card row shows services only. Order is
-    first-seen, which mirrors the tool's own price-ascending sort. A row without
+    Vendor rows are mapped onto the shared suggestion-card shape so the client
+    can render their image and physical location. Order is first-seen, which
+    mirrors the tool's own sort. A row without
     an ``id`` is skipped — the UI needs a stable React key and a link target,
     and neither can be synthesised safely.
     """
     if not isinstance(result, dict) or "error" in result:
+        return
+
+    if isinstance(result.get("vendors"), list):
+        for row in result["vendors"]:
+            if not isinstance(row, dict):
+                continue
+            identifier = row.get("id")
+            if not isinstance(identifier, str) or identifier in seen:
+                continue
+            seen.add(identifier)
+            address = row.get("address") or row.get("city")
+            sink.append(
+                {
+                    "id": identifier,
+                    "name": row.get("name"),
+                    "category": row.get("category"),
+                    "thumbnail_url": row.get("image_url"),
+                    "vendor_id": identifier,
+                    "vendor_name": row.get("name"),
+                    "vendor_image_url": row.get("image_url"),
+                    "vendor_address": address,
+                    "suggestion_type": "vendor",
+                }
+            )
         return
 
     if isinstance(result.get("plans"), list):
@@ -356,6 +388,7 @@ def _collect_retrieved_services(
                     "base_price": row.get("min_budget"),
                     "currency": row.get("currency"),
                     "thumbnail_url": row.get("cover_image_url"),
+                    "suggestion_type": "plan",
                 }
             )
         return

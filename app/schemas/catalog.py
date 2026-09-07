@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class VendorCard(BaseModel):
@@ -23,6 +23,27 @@ class VendorDetail(BaseModel):
 
     vendor: dict[str, Any]
     services: list[dict[str, Any]]
+
+
+class MapVendor(BaseModel):
+    id: str
+    name: str
+    category: str
+    rating: float = 0
+    reviews: int = 0
+    priceRange: Literal["$", "$$", "$$$"] | None = None
+    lat: float
+    lng: float
+    address: str = ""
+    description: str = ""
+    specialties: list[str] = Field(default_factory=list)
+    image: str | None = None
+    phone: str | None = None
+    hours: str | None = None
+
+
+class MapVendorCatalog(BaseModel):
+    vendors: list[MapVendor]
 
 
 class CustomizeCatalog(BaseModel):

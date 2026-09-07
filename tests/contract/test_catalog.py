@@ -21,6 +21,14 @@ def _catalog_store() -> dict[str, list[dict]]:
                 "rating_avg": 4.7,
                 "address": "District 1",
                 "image_url": "https://img/vendor.jpg",
+                "description": "Editorial wedding photography",
+                "phone": "0900000000",
+                "latitude": 10.8047,
+                "longitude": 106.6776,
+                "price_tier": "$$",
+                "business_hours": "09:00 - 20:00",
+                "specialties": ["Pre-wedding", "Album"],
+                "rating_count": 21,
                 "status": "active",
             },
             {"id": "hidden-vendor", "name": "Hidden", "status": "suspended"},
@@ -56,6 +64,43 @@ def test_anonymous_vendor_catalog_shape(client, app):
                 "rating": 4.7,
                 "addr": "District 1",
                 "img": "https://img/vendor.jpg",
+            }
+        ]
+    }
+
+
+def test_map_vendor_catalog_is_database_backed_and_requires_coordinates(client, app):
+    store = _catalog_store()
+    store["vendors"].append(
+        {
+            "id": "no-coordinates",
+            "name": "Not on map",
+            "category": "Khác",
+            "status": "active",
+        }
+    )
+    _set_store(app, store)
+
+    response = client.get("/api/v1/catalog/map/vendors")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "vendors": [
+            {
+                "id": VENDOR_ID,
+                "name": "Lantern Studio",
+                "category": "Chụp Ảnh",
+                "rating": 4.7,
+                "reviews": 21,
+                "priceRange": "$$",
+                "lat": 10.8047,
+                "lng": 106.6776,
+                "address": "District 1",
+                "description": "Editorial wedding photography",
+                "specialties": ["Pre-wedding", "Album"],
+                "image": "https://img/vendor.jpg",
+                "phone": "0900000000",
+                "hours": "09:00 - 20:00",
             }
         ]
     }

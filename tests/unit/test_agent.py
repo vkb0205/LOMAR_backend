@@ -108,8 +108,9 @@ class TestFieldRedaction:
     """Contact columns must be stripped before a row reaches the model."""
 
     def test_vendor_allowlist_excludes_contact_columns(self):
-        for banned in ("email", "phone", "owner_id", "address"):
+        for banned in ("email", "phone", "owner_id"):
             assert banned not in agent_tools.VENDOR_PUBLIC_FIELDS
+        assert "address" in agent_tools.VENDOR_PUBLIC_FIELDS
 
     def test_project_drops_unlisted_fields(self):
         row = {"id": "v1", "name": "X", "email": "a@b.c", "owner_id": "u1"}
@@ -811,6 +812,9 @@ class TestRetrievedServiceCollection:
                         "id": "a",
                         "name": "Gói A",
                         "base_price": 1000,
+                        "max_price": 2000,
+                        "price_unit": "gói",
+                        "price_display": "1.000–2.000đ/gói",
                         "thumbnail_url": "u",
                         "vendor_id": "v1",
                     }
@@ -822,6 +826,9 @@ class TestRetrievedServiceCollection:
                 "id": "a",
                 "name": "Gói A",
                 "base_price": 1000,
+                "max_price": 2000,
+                "price_unit": "gói",
+                "price_display": "1.000–2.000đ/gói",
                 "thumbnail_url": "u",
                 "vendor_id": "v1",
             }
@@ -833,13 +840,34 @@ class TestRetrievedServiceCollection:
         rows = self._collect(payload, payload)
         assert len(rows) == 1
 
-    def test_ignores_errors_and_vendor_only_results(self):
+    def test_collects_vendor_results_with_image_and_location(self):
         rows = self._collect(
             {"error": "boom"},
-            {"vendors": [{"id": "v1", "name": "Studio"}]},
+            {
+                "vendors": [
+                    {
+                        "id": "v1",
+                        "name": "Studio",
+                        "image_url": "https://example.test/studio.jpg",
+                        "address": "12 Hàng Bông",
+                    }
+                ]
+            },
             {"categories": ["Áo Dài"]},
         )
-        assert rows == []
+        assert rows == [
+            {
+                "id": "v1",
+                "name": "Studio",
+                "category": None,
+                "thumbnail_url": "https://example.test/studio.jpg",
+                "vendor_id": "v1",
+                "vendor_name": "Studio",
+                "vendor_image_url": "https://example.test/studio.jpg",
+                "vendor_address": "12 Hàng Bông",
+                "suggestion_type": "vendor",
+            }
+        ]
 
     def test_skips_rows_without_an_id(self):
         """A row with no id has no React key and no link target."""

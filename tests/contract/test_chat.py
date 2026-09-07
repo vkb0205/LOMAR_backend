@@ -26,6 +26,16 @@ def _store():
             {"id": "m1", "thread_id": THREAD_ID, "user_id": TEST_USER_ID, "role": "user", "content": "first", "created_at": "2026-08-01T00:00:00+00:00"},
         ],
         "services": [{"id": SERVICE_ID, "status": "active", "name": "Dress"}],
+        "vendors": [
+            {
+                "id": "ven-1",
+                "name": "Studio Mây",
+                "image_url": "https://example.test/vendor.jpg",
+                "address": "12 Hồ Văn Huê",
+                "city": "TP. Hồ Chí Minh",
+                "status": "active",
+            }
+        ],
     }
 
 
@@ -175,6 +185,9 @@ def test_consult_returns_service_cards(client, app):
             "name": "Gói chụp ảnh",
             "category": "photo",
             "base_price": 5_000_000,
+            "max_price": 7_000_000,
+            "price_unit": "gói",
+            "price_display": "5.000.000–7.000.000đ/gói",
             "currency": "VND",
             "thumbnail_url": "https://example.test/t.jpg",
             "vendor_id": "ven-1",
@@ -194,9 +207,16 @@ def test_consult_returns_service_cards(client, app):
             "name": "Gói chụp ảnh",
             "category": "photo",
             "basePrice": 5_000_000,
+            "maxPrice": 7_000_000,
+            "priceUnit": "gói",
+            "priceDisplay": "5.000.000–7.000.000đ/gói",
             "currency": "VND",
             "thumbnailUrl": "https://example.test/t.jpg",
             "vendorId": "ven-1",
+            "vendorName": "Studio Mây",
+            "vendorImageUrl": "https://example.test/vendor.jpg",
+            "vendorAddress": "12 Hồ Văn Huê",
+            "suggestionType": "service",
         }
     ]
 
@@ -212,6 +232,7 @@ def test_consult_returns_wedding_plan_cards(client, app):
             "base_price": 50_000_000,
             "currency": "VND",
             "thumbnail_url": "https://example.test/plan.jpg",
+            "suggestion_type": "plan",
         }
     ]
     with patch(
@@ -230,11 +251,46 @@ def test_consult_returns_wedding_plan_cards(client, app):
             "name": "Gói Cổ Điển",
             "category": "Cổ Điển",
             "basePrice": 50_000_000,
+            "maxPrice": None,
+            "priceUnit": None,
+            "priceDisplay": None,
             "currency": "VND",
             "thumbnailUrl": "https://example.test/plan.jpg",
             "vendorId": None,
+            "vendorName": None,
+            "vendorImageUrl": None,
+            "vendorAddress": None,
+            "suggestionType": "plan",
         }
     ]
+
+
+def test_consult_returns_vendor_image_and_physical_location(client, app):
+    _install(app)
+    vendors = [
+        {
+            "id": "ven-1",
+            "name": "Studio Mây",
+            "category": "Studio",
+            "thumbnail_url": "https://example.test/vendor.jpg",
+            "vendor_id": "ven-1",
+            "vendor_name": "Studio Mây",
+            "vendor_image_url": "https://example.test/vendor.jpg",
+            "vendor_address": "12 Hồ Văn Huê",
+            "suggestion_type": "vendor",
+        }
+    ]
+    with patch(
+        "chatbot.runtime.run_consultant_agent",
+        new=AsyncMock(return_value=("Bạn có thể tham khảo studio này", ["search_vendors"], vendors)),
+    ):
+        response = client.post("/api/v1/chat/consult", json={"message": "tìm studio gần đây"})
+
+    assert response.status_code == 200
+    suggestion = response.json()["retrievedServices"][0]
+    assert suggestion["suggestionType"] == "vendor"
+    assert suggestion["vendorImageUrl"] == "https://example.test/vendor.jpg"
+    assert suggestion["vendorAddress"] == "12 Hồ Văn Huê"
 
 
 def test_consult_empty_reply_is_degraded_fallback(client, app):

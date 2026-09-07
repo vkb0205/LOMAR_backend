@@ -103,7 +103,7 @@ class TestUserAccess:
         _install(app)
         resp = client.post(
             "/api/v1/chat/threads",
-            json={"contextType": "consultant"},
+            json={"contextType": "general"},
             headers=_auth(TEST_USER_ID),
         )
         assert resp.status_code == 201

@@ -40,6 +40,55 @@ async def get_vendor(client: AsyncClient, vendor_id: str) -> dict[str, Any] | No
     return rows[0] if rows else None
 
 
+async def get_vendors(client: AsyncClient, vendor_ids: list[str]) -> list[dict[str, Any]]:
+    """Return active vendors for a bounded set of suggestion-card ids."""
+    unique_ids = list(dict.fromkeys(vendor_ids))
+    if not unique_ids:
+        return []
+    result = await run_db(
+        lambda: client.table("vendors")
+        .select("id,name,image_url,address,city")
+        .in_("id", unique_ids)
+        .eq("status", VENDOR_VISIBLE_STATUS)
+        .execute()
+    )
+    return unwrap(result) or []
+
+
+_MAP_VENDOR_FIELDS = (
+    "id",
+    "name",
+    "category",
+    "description",
+    "address",
+    "phone",
+    "image_url",
+    "rating_avg",
+    "rating_count",
+    "latitude",
+    "longitude",
+    "price_tier",
+    "business_hours",
+    "specialties",
+)
+
+
+async def list_map_vendors(client: AsyncClient) -> list[dict[str, Any]]:
+    """Return active vendors that have usable geographic coordinates."""
+    result = await run_db(
+        lambda: client.table("vendors")
+        .select(",".join(_MAP_VENDOR_FIELDS))
+        .eq("status", VENDOR_VISIBLE_STATUS)
+        .execute()
+    )
+    rows = unwrap(result) or []
+    return [
+        row
+        for row in rows
+        if row.get("latitude") is not None and row.get("longitude") is not None
+    ]
+
+
 async def list_vendor_services(client: AsyncClient, vendor_id: str) -> list[dict[str, Any]]:
     result = await run_db(
         lambda: client.table("services")

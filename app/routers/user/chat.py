@@ -23,7 +23,7 @@ from app.deps.db import get_supabase
 from app.errors import DatabaseUnavailableError, NotFoundError
 from app.repositories import chat as repository
 from app.repositories import user_plan as user_plan_repository
-from app.repositories.catalog import get_service
+from app.repositories.catalog import get_service, get_vendors
 from app.schemas.chat import (
     ChatExchange,
     ChatMessage,
@@ -82,10 +82,33 @@ def _service_card(row: dict[str, Any]) -> RetrievedServiceCard | None:
         name=row.get("name"),
         category=row.get("category"),
         basePrice=row.get("base_price"),
+        maxPrice=row.get("max_price"),
+        priceUnit=row.get("price_unit"),
+        priceDisplay=row.get("price_display"),
         currency=row.get("currency"),
         thumbnailUrl=row.get("thumbnail_url"),
         vendorId=row.get("vendor_id"),
+        vendorName=row.get("vendor_name"),
+        vendorImageUrl=row.get("vendor_image_url"),
+        vendorAddress=row.get("vendor_address"),
+        suggestionType=row.get("suggestion_type", "service"),
     )
+
+
+async def _with_vendor_details(client: Any, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Attach public vendor presentation fields to service suggestion rows."""
+    vendor_ids = [row["vendor_id"] for row in rows if isinstance(row.get("vendor_id"), str)]
+    vendors = {row["id"]: row for row in await get_vendors(client, vendor_ids) if row.get("id")}
+    enriched: list[dict[str, Any]] = []
+    for source in rows:
+        row = dict(source)
+        vendor = vendors.get(row.get("vendor_id"))
+        if vendor:
+            row.setdefault("vendor_name", vendor.get("name"))
+            row.setdefault("vendor_image_url", vendor.get("image_url"))
+            row.setdefault("vendor_address", vendor.get("address") or vendor.get("city"))
+        enriched.append(row)
+    return enriched
 
 
 def _build_extra_context(
@@ -170,7 +193,8 @@ async def consult(
         ],
     )
 
-    cards = [card for row in retrieved if (card := _service_card(row)) is not None]
+    enriched = await _with_vendor_details(client, retrieved)
+    cards = [card for row in enriched if (card := _service_card(row)) is not None]
     logger.info(
         "consult_completed session_id=%s tools_used=%s services=%s degraded=%s",
         session_id,
@@ -278,7 +302,11 @@ async def send_message(
         userMessage=_message(user_row),
         assistantMessage=_message(assistant_row),
         persisted=True,
-        retrievedServices=[card for row in retrieved if (card := _service_card(row)) is not None],
+        retrievedServices=[
+            card
+            for row in await _with_vendor_details(client, retrieved)
+            if (card := _service_card(row)) is not None
+        ],
     )
 
 

@@ -11,6 +11,8 @@ from app.errors import NotFoundError
 from app.repositories import catalog as repository
 from app.schemas.catalog import (
     CustomizeCatalog,
+    MapVendor,
+    MapVendorCatalog,
     ServiceSuggestion,
     VendorCard,
     VendorDetail,
@@ -40,6 +42,32 @@ async def vendors(client=Depends(get_supabase)) -> dict[str, list[VendorCard]]:
         for row in rows
     ]
     return {"vendors": cards}
+
+
+@router.get("/map/vendors", response_model=MapVendorCatalog)
+async def map_vendors(client=Depends(get_supabase)) -> MapVendorCatalog:
+    rows = await repository.list_map_vendors(client)
+    return MapVendorCatalog(
+        vendors=[
+            MapVendor(
+                id=str(row.get("id", "")),
+                name=row.get("name") or "",
+                category=row.get("category") or "Khác",
+                rating=float(row.get("rating_avg") or 0),
+                reviews=int(row.get("rating_count") or 0),
+                priceRange=row.get("price_tier"),
+                lat=float(row["latitude"]),
+                lng=float(row["longitude"]),
+                address=row.get("address") or "",
+                description=row.get("description") or "",
+                specialties=row.get("specialties") or [],
+                image=row.get("image_url"),
+                phone=row.get("phone"),
+                hours=row.get("business_hours"),
+            )
+            for row in rows
+        ]
+    )
 
 
 @router.get("/vendors/{vendorId}", response_model=VendorDetail)

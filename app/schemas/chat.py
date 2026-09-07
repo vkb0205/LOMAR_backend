@@ -69,9 +69,16 @@ class RetrievedServiceCard(BaseModel):
     name: str | None = None
     category: str | None = None
     basePrice: float | None = None
+    maxPrice: float | None = None
+    priceUnit: str | None = None
+    priceDisplay: str | None = None
     currency: str | None = None
     thumbnailUrl: str | None = None
     vendorId: str | None = None
+    vendorName: str | None = None
+    vendorImageUrl: str | None = None
+    vendorAddress: str | None = None
+    suggestionType: Literal["service", "vendor", "plan"] = "service"
 
 
 class ConsultResponse(BaseModel):

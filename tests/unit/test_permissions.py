@@ -1,4 +1,4 @@
-"""Unit tests for the monotonic customer/vendor/admin role hierarchy."""
+"""Unit tests for universal customer access and exact privileged tiers."""
 
 from __future__ import annotations
 
@@ -7,8 +7,9 @@ import pytest
 from app.auth.models import CurrentUser
 from app.auth.permissions import (
     require_admin,
+    require_authenticated,
     require_customer,
-    require_minimum_role,
+    require_exact_role,
     require_vendor,
 )
 from app.errors import ForbiddenError
@@ -23,14 +24,13 @@ from app.errors import ForbiddenError
         (require_customer, "admin", True),
         (require_vendor, "customer", False),
         (require_vendor, "vendor", True),
-        (require_vendor, "admin", True),
+        (require_vendor, "admin", False),
         (require_admin, "customer", False),
         (require_admin, "vendor", False),
         (require_admin, "admin", True),
-        (require_customer, "unknown", False),
     ],
 )
-async def test_role_hierarchy(dependency, role: str, allowed: bool) -> None:
+async def test_permission_groups(dependency, role: str, allowed: bool) -> None:
     user = CurrentUser(id="actor", role=role)
     if allowed:
         assert await dependency(user) is user
@@ -39,6 +39,13 @@ async def test_role_hierarchy(dependency, role: str, allowed: bool) -> None:
             await dependency(user)
 
 
-def test_unknown_minimum_role_is_rejected_at_configuration_time() -> None:
-    with pytest.raises(ValueError, match="Unknown minimum role"):
-        require_minimum_role("business")
+@pytest.mark.asyncio
+@pytest.mark.parametrize("role", ["customer", "vendor", "admin"])
+async def test_authenticated_group_accepts_every_application_role(role: str) -> None:
+    user = CurrentUser(id="actor", role=role)
+    assert await require_authenticated(user) is user
+
+
+def test_unknown_role_is_rejected_at_configuration_time() -> None:
+    with pytest.raises(ValueError, match="Unknown role"):
+        require_exact_role("business")

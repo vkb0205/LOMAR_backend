@@ -1,11 +1,14 @@
 """Stage 3 — centralized role-based authorization contract tests (T013).
 
-Verifies the four-tier security model:
+Verifies the universal customer-access group and exact privileged tiers:
 
   /public/*     — no auth required
-  /user/*       — authenticated + minimum role=customer
-  /business/*   — authenticated + minimum role=vendor
-  /admin/*      — authenticated + role=admin
+  /user/*       — every authenticated account (customer baseline)
+  /business/*   — authenticated + role=vendor (vendor only)
+  /admin/*      — authenticated + role=admin (admin only)
+
+Vendor and admin accounts inherit customer features, including AI chat. They do
+not inherit one another's privileged business/admin routes.
 
 Security flow per request:
   request → centralized dependency (JWT verify + DB role lookup)
@@ -89,7 +92,7 @@ class TestUnauthenticated:
 
 
 # ---------------------------------------------------------------------------
-# 2. user accessing /user → allowed
+# 2. customer accessing /user → allowed
 # ---------------------------------------------------------------------------
 
 
@@ -110,7 +113,7 @@ class TestUserAccess:
 
 
 # ---------------------------------------------------------------------------
-# 3. user accessing /business → 403
+# 3. customer accessing /business → 403
 # ---------------------------------------------------------------------------
 
 
@@ -123,7 +126,7 @@ class TestUserDeniedBusiness:
 
 
 # ---------------------------------------------------------------------------
-# 4. user accessing /admin → 403
+# 4. customer accessing /admin → 403
 # ---------------------------------------------------------------------------
 
 
@@ -136,7 +139,7 @@ class TestUserDeniedAdmin:
 
 
 # ---------------------------------------------------------------------------
-# 5. vendor inherits customer routes and accesses /business
+# 5. vendor inherits customer access and accesses /business, but not /admin
 # ---------------------------------------------------------------------------
 
 
@@ -145,9 +148,18 @@ class TestVendorAccess:
         _install(app)
         resp = client.get(
             "/api/v1/me/dashboard",
-            headers=_auth(TEST_VENDOR_USER_ID, role="customer"),
+            headers=_auth(TEST_VENDOR_USER_ID, role="vendor"),
         )
         assert resp.status_code == 200
+
+    def test_vendor_can_create_ai_chat_thread(self, client, app):
+        _install(app)
+        resp = client.post(
+            "/api/v1/chat/threads",
+            json={"contextType": "general"},
+            headers=_auth(TEST_VENDOR_USER_ID, role="vendor"),
+        )
+        assert resp.status_code == 201
 
     def test_vendor_reads_services_allowed(self, client, app):
         _install(app)
@@ -185,7 +197,7 @@ class TestVendorDeniedAdmin:
 
 
 # ---------------------------------------------------------------------------
-# 7. admin accessing /admin → allowed
+# 7. admin inherits customer access and accesses /admin, but not /business
 # ---------------------------------------------------------------------------
 
 
@@ -199,13 +211,13 @@ class TestAdminAccess:
         assert resp.status_code == 200
         assert resp.json()["users"] == 3
 
-    def test_admin_inherits_vendor_routes(self, client, app):
+    def test_admin_denied_vendor_routes(self, client, app):
         _install(app)
         resp = client.get(
             "/api/v1/business/services",
             headers=_auth(TEST_ADMIN_ID, role="admin"),
         )
-        assert resp.status_code == 200
+        assert resp.status_code == 403
 
     def test_admin_inherits_customer_routes(self, client, app):
         _install(app)
@@ -214,6 +226,15 @@ class TestAdminAccess:
             headers=_auth(TEST_ADMIN_ID, role="admin"),
         )
         assert resp.status_code == 200
+
+    def test_admin_can_create_ai_chat_thread(self, client, app):
+        _install(app)
+        resp = client.post(
+            "/api/v1/chat/threads",
+            json={"contextType": "general"},
+            headers=_auth(TEST_ADMIN_ID, role="admin"),
+        )
+        assert resp.status_code == 201
 
 
 # ---------------------------------------------------------------------------

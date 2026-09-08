@@ -1,4 +1,4 @@
-"""End-to-end checks for the public/customer/vendor/admin hierarchy."""
+"""Checks for universal customer access and exact privileged tiers."""
 
 from tests.conftest import TEST_ADMIN_ID, TEST_USER_ID, TEST_VENDOR_USER_ID, factory_token
 from tests.fakes import FakeSupabase
@@ -36,14 +36,16 @@ def test_public_route_needs_no_jwt(client, app):
     assert client.get("/api/v1/public/health").status_code == 200
 
 
-def test_hierarchical_role_routes(client, app):
+def test_customer_baseline_and_exact_privileged_routes(client, app):
     _install(app)
     assert client.get("/api/v1/user/profile").status_code == 401
     assert client.get("/api/v1/user/profile", headers=_auth(TEST_USER_ID)).status_code == 200
     assert client.get("/api/v1/business/services", headers=_auth(TEST_USER_ID)).status_code == 403
+    # Customer access is the universal authenticated baseline.
     assert client.get("/api/v1/user/profile", headers=_auth(TEST_VENDOR_USER_ID)).status_code == 200
     assert client.get("/api/v1/user/profile", headers=_auth(TEST_ADMIN_ID)).status_code == 200
-    assert client.get("/api/v1/business/services", headers=_auth(TEST_ADMIN_ID)).status_code == 200
+    # vendor tier is vendor-only: admin is denied.
+    assert client.get("/api/v1/business/services", headers=_auth(TEST_ADMIN_ID)).status_code == 403
     assert client.get("/api/v1/admin/metrics", headers=_auth(TEST_VENDOR_USER_ID)).status_code == 403
     assert client.get("/api/v1/admin/metrics", headers=_auth(TEST_ADMIN_ID)).status_code == 200
 
@@ -53,13 +55,6 @@ def test_vendor_lists_only_owned_resources(client, app):
     response = client.get("/api/v1/business/services", headers=_auth(TEST_VENDOR_USER_ID))
     assert response.status_code == 200
     assert [row["id"] for row in response.json()] == ["service-a"]
-
-
-def test_admin_lists_all_vendor_resources(client, app):
-    _install(app)
-    response = client.get("/api/v1/business/services", headers=_auth(TEST_ADMIN_ID))
-    assert response.status_code == 200
-    assert {row["id"] for row in response.json()} == {"service-a", "service-b"}
 
 
 def test_vendor_cannot_modify_another_vendor_resource(client, app):
@@ -77,17 +72,6 @@ def test_vendor_cannot_modify_another_vendor_resource(client, app):
     assert allowed.status_code == 200
     assert denied.status_code == 403
     assert next(row for row in fake.rows["services"] if row["id"] == "service-b")["status"] == "active"
-
-
-def test_admin_can_modify_any_vendor_resource(client, app):
-    fake = _install(app)
-    response = client.put(
-        "/api/v1/business/services/service-b/status",
-        json={"status": "archived"},
-        headers=_auth(TEST_ADMIN_ID),
-    )
-    assert response.status_code == 200
-    assert next(row for row in fake.rows["services"] if row["id"] == "service-b")["status"] == "archived"
 
 
 def test_jwt_role_claim_cannot_escalate(client, app):

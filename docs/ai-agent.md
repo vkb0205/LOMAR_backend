@@ -6,7 +6,7 @@ local development use the same implementations:
 | Package | Role |
 | --- | --- |
 | `app/agents/chatbot/` | Couple wedding consultant — system prompt, catalog tools, OpenAI-compatible runtime, session memory |
-| `app/agents/business_intelligence/` | Vendor/admin BI — DB-backed demand proxies (not GMV) |
+| `app/agents/business_intelligence/` | Vendor BI — DB-backed demand proxies (not GMV) |
 
 HTTP stays in `app/routers/` (`user/chat.py`, `business/business_intelligence.py`). Thin
 compatibility shims remain under `app/services/` so imports like
@@ -226,7 +226,7 @@ context, so the consultant can acknowledge existing choices ("bạn đã chọn 
 
 ## Business Intelligence Copilot
 
-DB-backed BI for `vendor` and `admin`. Metrics are **demand/pipeline
+DB-backed BI for `vendor`. Metrics are **demand/pipeline
 proxies** from `service_requests` (leads, pipeline value, budget rate, interested
 customers). There is no orders/GMV table yet — GMV labels are deferred.
 
@@ -237,7 +237,7 @@ RPC `get_vendor_bi_metrics`; the service also computes metrics in Python so
 tests work without RPC.
 
 Auth: centralized vendor-tier `require_vendor` (fresh `profiles.role` lookup). Repository
-scope: admin → platform (`vendor_id` null); vendor → owned vendor.
+scope: vendor → owned vendor. Admin routes retain their separate exact-role boundary.
 
 ### Routes
 

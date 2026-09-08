@@ -1,4 +1,8 @@
-"""Role authorization, deliberately separate from JWT authentication."""
+"""Authenticated-user and exact-role authorization groups.
+
+Customer access is the universal baseline for every authenticated LOMAR user.
+Business and admin access remain independent, exact-role tiers.
+"""
 
 from __future__ import annotations
 
@@ -16,30 +20,34 @@ from app.services.authz import (
     LOMAR_ROLE_VENDOR,
 )
 
-_ROLE_LEVELS = {
-    LOMAR_ROLE_CUSTOMER: 10,
-    LOMAR_ROLE_VENDOR: 20,
-    LOMAR_ROLE_ADMIN: 30,
-}
+_KNOWN_ROLES = frozenset({LOMAR_ROLE_CUSTOMER, LOMAR_ROLE_VENDOR, LOMAR_ROLE_ADMIN})
 
 
-def require_minimum_role(
-    minimum_role: str,
+async def require_authenticated(
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+) -> CurrentUser:
+    """Allow any authenticated LOMAR user, independent of application role."""
+    return user
+
+
+def require_exact_role(
+    required_role: str,
 ) -> Callable[..., Coroutine[Any, Any, CurrentUser]]:
-    """Require a role at or above ``minimum_role`` in the LOMAR hierarchy."""
-    try:
-        minimum_level = _ROLE_LEVELS[minimum_role]
-    except KeyError as exc:
-        raise ValueError(f"Unknown minimum role: {minimum_role}") from exc
+    """Require the caller to hold exactly ``required_role`` (no inheritance)."""
+    if required_role not in _KNOWN_ROLES:
+        raise ValueError(f"Unknown role: {required_role}")
 
     async def checker(user: Annotated[CurrentUser, Depends(get_current_user)]) -> CurrentUser:
-        if _ROLE_LEVELS.get(user.role, -1) < minimum_level:
+        if user.role != required_role:
             raise ForbiddenError("Insufficient permissions.")
         return user
 
     return checker
 
 
-require_customer = require_minimum_role(LOMAR_ROLE_CUSTOMER)
-require_vendor = require_minimum_role(LOMAR_ROLE_VENDOR)
-require_admin = require_minimum_role(LOMAR_ROLE_ADMIN)
+# ``customer`` is the product name for the universal authenticated surface.
+# Authentication and profile resolution have already happened in
+# ``get_current_user`` before this dependency runs.
+require_customer = require_authenticated
+require_vendor = require_exact_role(LOMAR_ROLE_VENDOR)
+require_admin = require_exact_role(LOMAR_ROLE_ADMIN)

@@ -122,15 +122,14 @@ def test_bi_overview_vendor_empty_metrics(client, app):
     assert isinstance(body["reports"], list)
 
 
-def test_bi_overview_admin_ok(client, app):
+def test_bi_overview_admin_denied(client, app):
+    """Admin does not inherit the vendor-only business tier."""
     _install(app)
     response = client.get(
         "/api/v1/business-intelligence/overview",
         headers=_auth(TEST_ADMIN_ID, role="admin"),
     )
-    assert response.status_code == 200
-    body = response.json()
-    assert len(body["metrics"]) == 4
+    assert response.status_code == 403
 
 
 def test_bi_overview_exposes_runtime_activity_and_report_values(client, app):

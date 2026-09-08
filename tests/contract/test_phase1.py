@@ -76,11 +76,11 @@ class TestErrorEnvelope:
 
     def test_validation_error_uses_envelope(self, client):
         """FastAPI's own validation errors are remapped to the envelope."""
-        from tests.conftest import TEST_ADMIN_ID, factory_token
+        from tests.conftest import TEST_VENDOR_USER_ID, factory_token
 
         resp = client.post(
             "/api/v1/business-intelligence/agents/run",
-            headers={"Authorization": f"Bearer {factory_token(TEST_ADMIN_ID, role='admin')}"},
+            headers={"Authorization": f"Bearer {factory_token(TEST_VENDOR_USER_ID, role='vendor')}"},
             json={},
         )
         assert resp.status_code == 422

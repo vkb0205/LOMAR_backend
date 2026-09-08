@@ -1,4 +1,9 @@
-"""Vendor-tier API with resource-ownership authorization."""
+"""Vendor-tier API with resource-ownership authorization.
+
+The vendor tier is independent: only callers whose ``profiles.role`` is exactly
+``vendor`` may reach these routes. Admins use their own ``/admin`` tier and do
+not inherit vendor ownership access.
+"""
 
 from __future__ import annotations
 
@@ -11,7 +16,6 @@ from app.auth.permissions import require_vendor
 from app.deps.db import get_supabase, run_db, unwrap
 from app.errors import ForbiddenError, NotFoundError
 from app.schemas.admin import ServiceStatusUpdate
-from app.services.authz import LOMAR_ROLE_ADMIN
 from .business_intelligence import router as business_intelligence_router
 
 router = APIRouter()
@@ -31,12 +35,6 @@ async def _owned_vendor_ids(client, user_id: str) -> list[str]:
 
 
 async def _accessible_rows(client, table: str, user: CurrentUser) -> list[dict]:
-    if user.role == LOMAR_ROLE_ADMIN:
-        result = await run_db(
-            lambda: client.table(table).select("*").order("created_at", desc=True).execute()
-        )
-        return unwrap(result) or []
-
     vendor_ids = await _owned_vendor_ids(client, user.id)
     if not vendor_ids:
         return []
@@ -54,10 +52,7 @@ async def require_service_access(client, service_id: str, user: CurrentUser) -> 
     if not rows:
         raise NotFoundError()
     service = rows[0]
-    if (
-        user.role != LOMAR_ROLE_ADMIN
-        and service.get("vendor_id") not in await _owned_vendor_ids(client, user.id)
-    ):
+    if service.get("vendor_id") not in await _owned_vendor_ids(client, user.id):
         raise ForbiddenError("You do not have permission to modify this resource.")
     return service
 

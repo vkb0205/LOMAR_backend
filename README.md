@@ -51,9 +51,9 @@ sanitized envelope `{ "error": { "code": "...", "message": "..." } }`.
 | Group | Policy | Included domains |
 |---|---|---|
 | Public | No JWT required | Health, catalog, public social reads, analytics, consultant (optional JWT) |
-| Customer tier | Minimum `profiles.role = customer` | Profile, dashboard, plan acceptance, durable chat |
-| Vendor tier | Minimum `profiles.role = vendor` | Customer features plus owned services, requests, vouchers, and business intelligence |
-| Admin tier | `profiles.role = admin` | Full route access plus platform administration |
+| Customer access group | Any authenticated profile | Profile, dashboard, plan acceptance, durable AI chat |
+| Vendor tier | Exact `profiles.role = vendor` | Customer features plus owned services, requests, vouchers, and business intelligence |
+| Admin tier | Exact `profiles.role = admin` | Customer features plus platform administration |
 
 `/health` remains dependency-free. Legacy VTON routes (`/proxy-image`,
 `/test-try-on*`, and the old root-level `/consult`) are retired and are not mounted.
